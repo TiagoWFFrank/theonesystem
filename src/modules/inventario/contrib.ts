@@ -1,4 +1,6 @@
 import { ClipboardList, Laptop, PackageCheck, PackagePlus } from 'lucide-react';
+import { fmtDate } from '@/platform/format';
+import { EQ_STATUS } from './meta';
 import type { ModuleManifest } from '@/platform/types';
 
 const plus = (iso: string, d: number) => new Date(new Date(iso).getTime() + d * 86400000).toISOString();
@@ -30,4 +32,14 @@ export const inventarioContrib: ModuleManifest['contributes'] = {
     ...(c.scope('inventario') === 'proprios' ? [{ id: 'inv-meus', origin: 'inventario' as const, label: 'Meus equipamentos', to: '/inventario/equipamentos', icon: Laptop, weight: 30 }] : []),
     ...(c.can('inventario', 'registrar_entrega') && !c.isLeader ? [{ id: 'inv-mov', origin: 'inventario' as const, label: 'Entregas e devoluções', to: '/inventario/movimentacoes', icon: ClipboardList, weight: 15 }] : []),
   ],
+  search: (c, t) => c.data.equipments
+    .filter((e) => e.companyId === c.company && c.sees('inventario', e.responsavelId) && [e.patrimonio, e.descricao, c.userName(e.responsavelId), e.serie].join(' ').toLowerCase().includes(t))
+    .map((e) => ({ title: `${e.patrimonio} · ${e.descricao}`, sub: e.responsavelId ? c.userName(e.responsavelId) : 'Sem responsável', to: `/inventario/equipamentos/${e.id}` })),
+  exports: {
+    label: 'Equipamentos',
+    fields: [{ key: 'patrimonio', label: 'Patrimônio' }, { key: 'descricao', label: 'Equipamento' }, { key: 'tipo', label: 'Tipo' }, { key: 'responsavel', label: 'Responsável' }, { key: 'localizacao', label: 'Localização' }, { key: 'situacao', label: 'Situação' }, { key: 'ultimaMov', label: 'Última movimentação' }],
+    rows: (c, ids) => c.data.equipments.filter((e) => e.companyId === c.company && (!ids || ids.includes(e.id)) && c.sees('inventario', e.responsavelId))
+      .map((e) => ({ id: e.id, label: e.patrimonio, values: { patrimonio: e.patrimonio, descricao: e.descricao, tipo: e.tipo, responsavel: e.responsavelId ? c.userName(e.responsavelId) : '', localizacao: e.localizacao, situacao: EQ_STATUS[e.status].label, ultimaMov: fmtDate(e.ultimaMov) } })),
+    history: (c, id) => c.data.events.filter((e) => e.module === 'inventario' && e.recordId === id).map((e) => `${fmtDate(e.ts)} ${e.action}`).join(' | '),
+  },
 };

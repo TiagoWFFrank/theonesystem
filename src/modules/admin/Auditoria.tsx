@@ -45,7 +45,7 @@ export default function Auditoria() {
             <table className="tbl">
               <thead><tr><th>Data</th><th>Categoria</th><th>Origem · registro</th><th>Ação</th><th>Autor</th>{f.amb === 'todos' && <th>Ambiente</th>}</tr></thead>
               <tbody>{rows.map((e) => (
-                <tr key={e.id} onClick={() => nav(recordPath(e.module, e.recordId))}>
+                <tr key={e.id} onClick={() => nav(recordPath(e.module, e.recordId, data))}>
                   <td className="num small" style={{ whiteSpace: 'nowrap' }}>{fmtDateTime(e.ts)}</td>
                   <td><Badge tone={KINDS[e.kind!].tone} plain>{KINDS[e.kind!].label}</Badge></td>
                   <td className="small"><span className="muted">{ORIGINS[e.module].name}</span> · <b className="tnum">{e.recordLabel}</b></td>

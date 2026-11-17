@@ -1,0 +1,37 @@
+// Integrações configuradas (servidor com variáveis de ambiente) + validação pelo backend de integração (falso).
+const { chromium } = require('playwright');
+const BASE = 'http://localhost:5174/#';
+const OUT = process.env.OUT || require('path').join(__dirname, 'capturas');
+require('fs').mkdirSync(OUT, { recursive: true });
+const results = [];
+const ok = (name, cond, extra = '') => { results.push({ name, ok: !!cond, extra }); console.log(`${cond ? '✔' : '✘'} ${name}${extra ? ' · ' + extra : ''}`); };
+(async () => {
+  const b = await chromium.launch(); const d = await (await b.newContext({ viewport: { width: 1440, height: 1000 }, locale: 'pt-BR' })).newPage();
+  const errors = []; d.on('pageerror', (e) => errors.push(e.message));
+  await d.goto(BASE + '/entrar'); await d.evaluate(() => { localStorage.clear(); localStorage.setItem('azime-demo-session-v4', JSON.stringify({ userId: 'u1', companyId: 'azime' })); });
+  await d.goto(BASE + '/intranet/p1'); await d.reload(); await d.waitForSelector('article [data-integration]', { timeout: 20000 });
+  const st = await d.getAttribute('article [data-integration="sharepoint"]', 'data-state');
+  ok('I1. Endereço configurado sem validação: “Configurado · não validado”, adaptador simulado', st === 'configurado' && /Configurado · não validado/.test(await d.innerText('article')) && /adaptador simulado/.test(await d.innerText('article')));
+  const href = await d.getAttribute('article a[data-dest="sistema"]', 'href');
+  ok('I2. Registro demonstrativo não ganha link inventado; destino de sistema usa o endereço configurado', href === 'https://azime.sharepoint.com/sites/intranet' && /Registro demonstrativo/.test(await d.innerText('article')), href);
+  await d.screenshot({ path: `${OUT}/60-intranet-configurada.png` });
+  await d.goto(BASE + '/inicio?mensagem=m1'); await d.waitForTimeout(900);
+  const th = await d.getAttribute('.drawer a[data-dest="sistema"]', 'href');
+  ok('I3. Teams: abre o Teams do tenant configurado; conversa sem webUrl da origem não é inventada', /tenantId=tenant-demo-123/.test(th || '') && /Registro demonstrativo/.test(await d.innerText('.drawer')), th);
+  await d.keyboard.press('Escape');
+  await d.click('.demo-pill'); await d.waitForTimeout(300);
+  await d.click('[data-integ-row="sharepoint"] button:has-text("Validar conexão")'); await d.waitForTimeout(800);
+  await d.click('[data-integ-row="teams"] button:has-text("Validar conexão")'); await d.waitForTimeout(800);
+  const s1 = await d.getAttribute('[data-integ-row="sharepoint"] [data-state]', 'data-state');
+  const s2 = await d.getAttribute('[data-integ-row="teams"] [data-state]', 'data-state');
+  const s3 = await d.getAttribute('[data-integ-row="chamados"] [data-state]', 'data-state');
+  const t1 = await d.innerText('[data-integ-row="sharepoint"]');
+  ok('I4. Validação pelo backend: SharePoint “Conexão validada”, adaptador ainda simulado (real não implementado)', s1 === 'validado' && /Conexão validada/.test(t1) && /adaptador simulado/.test(t1), t1.replace(/\s+/g, ' '));
+  ok('I5. Validação recusada: Teams “Falha na validação” com o motivo', s2 === 'falhou' && /Token recusado/.test(await d.innerText('[data-integ-row="teams"]')));
+  ok('I6. Sem endereço continua “Simulado” e sem botão de validar', s3 === 'simulado' && !(await d.isVisible('[data-integ-row="chamados"] button:has-text("Validar conexão")')));
+  await d.screenshot({ path: `${OUT}/61-apresentador-validacao.png` });
+  ok('Sem erros de console', errors.length === 0, errors.join(' | '));
+  console.log(`\nRESULTADO: ${results.filter((r) => r.ok).length}/${results.length}`);
+  require('fs').writeFileSync(`${OUT}/integ.json`, JSON.stringify(results, null, 1));
+  await b.close();
+})().catch((e) => { console.error(e); process.exit(1); });

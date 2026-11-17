@@ -11,7 +11,6 @@ import { ALL_MODULES, useVisibleModules } from './modules';
 import { NotificationRows, useNotifications } from '@/ui/feeds';
 import { ORIGINS } from '@/ui/origin';
 import { postsFor } from '@/platform/sources';
-import { findRec, seesChamado } from '@/modules/chamados/ops';
 import type { BrandId, ModuleId, OriginId } from '@/platform/types';
 
 function useClickOutside(open: boolean, close: () => void) {
@@ -177,7 +176,7 @@ function UserMenu() {
 
 /** Busca global agrupada por módulo, respeitando permissões e ambiente ativo. */
 function GlobalSearch() {
-  const { data, company, sees, can, userName, contrib, me } = useDemo();
+  const { data, company, can, contrib, me } = useDemo();
   const mods = useVisibleModules();
   const nav = useNavigate();
   const [q, setQ] = useState('');
@@ -196,13 +195,8 @@ function GlobalSearch() {
     if (t.length < 2) return [];
     const has = (...s: (string | undefined)[]) => s.join(' ').toLowerCase().includes(t);
     const out: { mod: ModuleId; label: string; items: { title: string; sub: string; to: string }[] }[] = [];
-    if (on('inventario')) out.push({ mod: 'inventario', label: 'Inventário', items: data.equipments.filter((e) => e.companyId === company && sees('inventario', e.responsavelId) && has(e.patrimonio, e.descricao, userName(e.responsavelId), e.serie)).map((e) => ({ title: `${e.patrimonio} · ${e.descricao}`, sub: e.responsavelId ? userName(e.responsavelId) : 'Sem responsável', to: `/inventario/equipamentos/${e.id}` })) });
-    if (on('reverso')) out.push({ mod: 'reverso', label: 'Reverso', items: data.reversos.filter((r) => r.companyId === company && sees('reverso', r.solicitanteId) && has(r.numero, r.clienteNome, r.motivo, r.clienteCodigo)).map((r) => ({ title: `${r.numero} · ${r.motivo}`, sub: r.clienteNome, to: `/reverso/solicitacoes/${r.id}` })) });
-    if (on('viagens')) out.push({ mod: 'viagens', label: 'Viagens', items: data.viagens.filter((v) => v.companyId === company && sees('viagens', v.viajanteId) && has(v.codigo, v.destino, userName(v.viajanteId))).map((v) => ({ title: `${v.codigo} · ${v.destino}`, sub: userName(v.viajanteId), to: `/viagens/${v.id}` })) });
-    if (on('chamados') && contrib) out.push({ mod: 'chamados', label: 'Chamados e tarefas', items: [
-      ...data.chamados.filter((x) => x.companyId === company && seesChamado(contrib, { kind: 'chamado', ch: x }) && has(x.numero, x.titulo)).map((x) => ({ title: `${x.numero} · ${x.titulo}`, sub: `${userName(x.solicitanteId)} → ${userName(x.responsavelId)}`, to: `/chamados/${x.id}` })),
-      ...data.tarefas.filter((t) => t.companyId === company && seesChamado(contrib, findRec(contrib, t.id)!) && has(t.codigo, t.titulo)).map((t) => ({ title: `${t.codigo} · ${t.titulo}`, sub: userName(t.responsavelId), to: `/chamados/tarefas/${t.id}` })),
-    ] });
+    // cada plugin habilitado contribui com sua própria busca (contrato `contributes.search`)
+    if (contrib) for (const m of ALL_MODULES) if (m.contributes?.search && on(m.id)) out.push({ mod: m.id, label: m.name, items: m.contributes.search(contrib, t) });
     out.push({ mod: 'sharepoint' as never, label: 'Intranet', items: postsFor(data, company, me).filter((p) => has(p.titulo, p.resumo, p.area)).map((p) => ({ title: p.titulo, sub: `${p.categoria} · ${p.area}`, to: `/intranet/${p.id}` })) });
     if (can('admin', 'colaboradores')) out.push({ mod: 'admin', label: 'Colaboradores', items: data.users.filter((u) => u.companies.includes(company) && has(u.name, u.email)).map((u) => ({ title: u.name, sub: `${u.sector} · ${u.email}`, to: `/admin/colaboradores/${u.id}` })) });
     return out.map((g) => ({ ...g, items: g.items.slice(0, 5) })).filter((g) => g.items.length);

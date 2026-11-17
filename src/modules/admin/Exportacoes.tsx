@@ -12,32 +12,35 @@ import { useToast } from '@/ui/toast';
 import { ForbiddenInline } from '@/pages/NotFound';
 import { EXP_STATUS } from '@/pages/ExportRequest';
 import { moduleName } from './meta';
+import { exportModules, exportsOf } from '@/platform/registry';
+import { configVersion, ruleGaps } from '@/platform/exports';
 import type { ExportConfig, ExportRequest, ModuleId } from '@/platform/types';
 
-const FIELDS: Partial<Record<ModuleId, { key: string; label: string }[]>> = {
-  inventario: [{ key: 'patrimonio', label: 'Patrimônio' }, { key: 'descricao', label: 'Equipamento' }, { key: 'tipo', label: 'Tipo' }, { key: 'responsavel', label: 'Responsável' }, { key: 'localizacao', label: 'Localização' }, { key: 'situacao', label: 'Situação' }, { key: 'ultimaMov', label: 'Última movimentação' }],
-  reverso: [{ key: 'numero', label: 'Número' }, { key: 'motivo', label: 'Motivo' }, { key: 'cliente', label: 'Cliente' }, { key: 'situacao', label: 'Situação' }, { key: 'abertura', label: 'Abertura' }],
-  viagens: [{ key: 'codigo', label: 'Código' }, { key: 'viajante', label: 'Viajante' }, { key: 'destino', label: 'Destino' }, { key: 'periodo', label: 'Período' }, { key: 'situacao', label: 'Situação' }],
-};
 const FORMATS: ExportConfig['formats'] = ['CSV', 'XLSX', 'PDF'];
 
 export default function Exportacoes() {
-  const { data, can, update, log, company, userName } = useDemo();
+  const { data, can, update, log, company, userName, me } = useDemo();
   const toast = useToast();
   const nav = useNavigate();
   const [f, setF] = useUrlState({ aba: 'regras', situacao: '' });
-  const mods = Object.keys(FIELDS) as ModuleId[];
+  const mods = exportModules().filter((m) => data.exportConfig[m]) as ModuleId[];
   const [mod, setMod] = useState<ModuleId>('inventario');
   const saved = data.exportConfig[mod]!;
   const [draft, setDraft] = useState<ExportConfig>(saved);
   useEffect(() => setDraft(data.exportConfig[mod]!), [mod, data.exportConfig]);
   if (!can('admin', 'exportacoes')) return <ForbiddenInline module="Exportações" />;
   const changed = JSON.stringify(draft) !== JSON.stringify(saved);
+  const fields = exportsOf(mod)?.fields ?? [];
+  const label = (k: string) => fields.find((x) => x.key === k)?.label ?? k;
+  // solicitações aprovadas (ainda baixáveis) que a nova regra deixaria de permitir
+  const affected = changed ? data.exportRequests.filter((x) => x.module === mod && ['aprovada', 'gerada', 'simulada'].includes(x.status)
+    && ruleGaps(draft, x.content, data.users.find((u) => u.id === x.requesterId), false, label).length > 0) : [];
   const toggle = <T,>(l: T[], v: T) => (l.includes(v) ? l.filter((x) => x !== v) : [...l, v]);
   const save = () => {
-    update((d) => { d.exportConfig[mod] = draft; });
-    log({ module: 'admin', recordId: `export-cfg-${mod}`, recordLabel: `Exportação ${moduleName(mod)}`, action: `Regra de exportação de ${moduleName(mod)}: ${draft.enabled ? `${draft.mode === 'permanente' ? 'autorização permanente' : 'por solicitação'} · ${draft.formats.join('/')} · cargos ${draft.roles.map((r) => ROLE_LABEL[r]).join(', ')}` : 'desativada'}`, kind: 'exportacao' });
-    toast(<>Regra de exportação de <b>{moduleName(mod)}</b> salva.</>);
+    const versao = configVersion(saved) + 1;
+    update((d) => { d.exportConfig[mod] = { ...draft, versao, atualizadoEm: new Date().toISOString(), atualizadoPor: me?.id }; });
+    log({ module: 'admin', recordId: `export-cfg-${mod}`, recordLabel: `Exportação ${moduleName(mod)}`, action: `Regra de exportação de ${moduleName(mod)} v${versao}: ${draft.enabled ? `${draft.mode === 'permanente' ? 'autorização permanente' : 'por solicitação'} · ${draft.formats.join('/')} · campos ${draft.fields.map(label).join(', ')} · cargos ${draft.roles.map((r) => ROLE_LABEL[r]).join(', ')}` : 'desativada'}${affected.length ? ` · ${affected.length} aprovação(ões) deixam de ser baixáveis` : ''}`, kind: 'exportacao' });
+    toast(<>Regra de exportação de <b>{moduleName(mod)}</b> salva (v{versao}).{affected.length ? ` ${affected.length} exportação(ões) aprovada(s) passam a ser bloqueadas no download.` : ''}</>);
   };
   const reqs = data.exportRequests.filter((x) => x.companyId === company);
   const shown = reqs.filter((x) => !f.situacao || x.status === f.situacao).sort((a, b) => b.criadoEm.localeCompare(a.criadoEm));
@@ -75,11 +78,16 @@ export default function Exportacoes() {
                 </div>
                 <div className="form-section"><h3>Formatos e campos</h3>
                   <div className="row-wrap" style={{ gap: 18, marginBottom: 14 }}>{FORMATS.map((x) => <label key={x} className="check"><input type="checkbox" checked={draft.formats.includes(x)} onChange={() => setDraft({ ...draft, formats: toggle(draft.formats, x) })} />{x}</label>)}</div>
-                  <div className="grid-3">{FIELDS[mod]!.map((x) => <label key={x.key} className="check"><input type="checkbox" checked={draft.fields.includes(x.key)} onChange={() => setDraft({ ...draft, fields: toggle(draft.fields, x.key) })} />{x.label}</label>)}</div>
+                  <div className="grid-3">{fields.map((x) => <label key={x.key} className="check"><input type="checkbox" checked={draft.fields.includes(x.key)} onChange={() => setDraft({ ...draft, fields: toggle(draft.fields, x.key) })} />{x.label}</label>)}</div>
                   <label className="check" style={{ marginTop: 16 }}><input type="checkbox" checked={draft.includeHistory} onChange={(e) => setDraft({ ...draft, includeHistory: e.target.checked })} />Incluir histórico de cada registro</label>
                 </div>
               </fieldset>
+              {affected.length > 0 && (
+                <div className="form-section" style={{ paddingTop: 0 }}><div className="banner banner-warn" role="alert"><Lock size={17} style={{ flexShrink: 0, marginTop: 2 }} />
+                  <span className="b-text small"><b>{affected.map((x) => x.numero).join(', ')}</b> {affected.length === 1 ? 'foi aprovada' : 'foram aprovadas'} com conteúdo que esta regra não permite mais. Ao salvar, o download {affected.length === 1 ? 'dela' : 'delas'} fica bloqueado e será preciso solicitar de novo.</span></div></div>
+              )}
               <div className="form-actions">
+                <span className="xs muted" style={{ marginRight: 'auto' }}>Regra v{configVersion(saved)}{saved.atualizadoEm ? ` · alterada em ${fmtDate(saved.atualizadoEm)} por ${userName(saved.atualizadoPor)}` : ''}</span>
                 <button className="btn btn-secondary" disabled={!changed} onClick={() => setDraft(saved)}>Descartar</button>
                 <button className="btn btn-primary" disabled={!changed} onClick={save}><Save size={16} />Salvar regra</button>
               </div>
@@ -99,7 +107,7 @@ export default function Exportacoes() {
                     <tbody>{shown.map((x) => (
                       <tr key={x.id} onClick={() => nav(`/exportacoes/${x.id}`)}>
                         <td className="id-cell">{x.numero}</td><td>{moduleName(x.module)}</td><td className="small">{userName(x.requesterId)}</td>
-                        <td className="num small">{x.registros} · {x.formato}</td><td><Badge tone={EXP_STATUS[x.status].tone}>{EXP_STATUS[x.status].label.split(' ·')[0]}</Badge></td>
+                        <td className="num small">{x.content.recordIds.length} · {x.content.formato}</td><td><Badge tone={EXP_STATUS[x.status].tone}>{EXP_STATUS[x.status].label.split(' ·')[0]}</Badge></td>
                         <td className="num small r">{fmtDate(x.criadoEm)}</td><td className="row-action"><ChevronRight size={18} className="muted" /></td>
                       </tr>))}</tbody>
                   </table>

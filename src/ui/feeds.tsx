@@ -5,12 +5,12 @@ import { ArrowUpRight, Bell, CheckCheck, MessagesSquare } from 'lucide-react';
 import { useDemo } from '@/platform/store';
 import { fmtDateTime, fmtRelative, fmtTime } from '@/platform/format';
 import { notificationsFor, teamsFor, unreadElsewhere, reachLabel } from '@/platform/sources';
-import { integration, teamsLink } from '@/platform/integrations';
+import { recordDestination, systemDestination } from '@/platform/integrations';
 import type { Notification, TeamsMessage } from '@/platform/types';
 import { Avatar, Drawer, EmptyState } from './core';
 import { COMPANIES } from './brand';
 import { ORIGINS } from './origin';
-import { SourceNotice, SyncStamp } from './source';
+import { IntegrationTag, SourceNotice, SyncStamp } from './source';
 
 export function useNotifications() {
   const { data, me, company, markRead } = useDemo();
@@ -51,23 +51,24 @@ export function NotificationsCard() {
 }
 
 export function TeamsCard() {
-  const { data, company, me, update, down } = useDemo();
+  const { data, company, me, update, down, validations } = useDemo();
   const [open, setOpen] = useState<TeamsMessage | null>(null);
   const msgs = teamsFor(data, company, me);
   const unread = msgs.filter((m) => !m.lida).length;
   const openMsg = (m: TeamsMessage) => { setOpen(m); if (!m.lida && !down('teams')) update((d) => { d.teams.find((x) => x.id === m.id)!.lida = true; }); };
-  const link = open ? open.url ?? teamsLink(open.conversa.nome) : undefined;
+  const rec = recordDestination('teams', open?.url, 'Abrir conversa no Teams', validations.teams);
+  const sys = systemDestination('teams', 'Abrir o Teams');
   const [params, setParams] = useSearchParams();
   useEffect(() => {
     const id = params.get('mensagem');
     const m = id && msgs.find((x) => x.id === id);
     if (m) { openMsg(m); params.delete('mensagem'); setParams(params, { replace: true }); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [params.get('mensagem')]);
   return (
     <section className="card" aria-labelledby="tm-h" id="mensagens">
       <div className="card-head"><MessagesSquare size={17} /><h2 id="tm-h" style={{ whiteSpace: 'nowrap' }}>Mensagens · Teams</h2>{unread > 0 && <span className="badge badge-accent plain tnum" style={{ marginLeft: 'auto' }}>{unread} não lidas</span>}</div>
-      <SourceNotice id="teams" label="O Teams" />
+      <SourceNotice id="teams" label="O Teams" cachedNote="Marcar como lida não é sincronizado até a conexão voltar." />
       {msgs.length === 0 ? <EmptyState icon={<MessagesSquare size={22} />} title="Sem mensagens recentes" /> : (
         <div className="mlist">
           {msgs.slice(0, 4).map((m) => (
@@ -82,13 +83,14 @@ export function TeamsCard() {
           ))}
         </div>
       )}
-      <div className="row xs muted" style={{ padding: '8px 18px', borderTop: '1px solid var(--border)' }}><SyncStamp id="teams" /><span className="spacer" /><span>Integração {integration('teams').mode === 'real' ? 'real' : 'simulada'}</span></div>
+      <div className="row xs muted" style={{ padding: '8px 18px', borderTop: '1px solid var(--border)' }}><SyncStamp id="teams" /><span className="spacer" /><IntegrationTag id="teams" compact /></div>
       <Drawer open={!!open} onClose={() => setOpen(null)} label="Conversa do Teams"
         title={open ? <span className="row" style={{ gap: 10 }}><MessagesSquare size={17} />{open.conversa.tipo === 'canal' ? `${open.conversa.equipe} › ${open.conversa.nome}` : open.conversa.nome}</span> : ''}
         footer={<>
-          {link ? <a className="btn btn-primary btn-sm" href={link} target="_blank" rel="noreferrer"><ArrowUpRight size={15} />Abrir no Teams</a>
-            : <button className="btn btn-secondary btn-sm" disabled title="Deep link do Teams não configurado"><ArrowUpRight size={15} />Abrir no Teams · não configurado</button>}
-          <span className="xs muted">Integração {integration('teams').mode === 'real' ? 'real' : 'simulada'}: consulta somente leitura</span>
+          {rec.href ? <a className="btn btn-primary btn-sm" href={rec.href} target="_blank" rel="noreferrer"><ArrowUpRight size={15} />{rec.label}</a>
+            : sys.href ? <a className="btn btn-secondary btn-sm" href={sys.href} target="_blank" rel="noreferrer" data-dest="sistema"><ArrowUpRight size={15} />{sys.label}</a>
+            : <button className="btn btn-secondary btn-sm" disabled title={`${rec.reason}. ${sys.reason}.`}><ArrowUpRight size={15} />Abrir no Teams</button>}
+          <IntegrationTag id="teams" compact />
         </>}>
         {open && (
           <div className="stack">
@@ -101,7 +103,7 @@ export function TeamsCard() {
                 </div>
               ))}
             </div>
-            <div className="banner banner-info"><span className="b-text small">Responder acontece no Teams. Nesta etapa a plataforma demonstra a consulta e o acesso à conversa; envio de mensagens depende da futura integração Microsoft.</span></div>
+            <div className="banner banner-info"><span className="b-text small">Responder acontece no Teams (consulta somente leitura). {rec.href ? '' : `${rec.reason}.`}{!rec.href && sys.href ? ' O botão abre a página inicial do Teams configurada.' : ''}</span></div>
           </div>
         )}
       </Drawer>

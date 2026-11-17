@@ -1,9 +1,17 @@
-# Plataforma AZIME — protótipo de apresentação (0.3 · painel pessoal)
+# Plataforma AZIME — protótipo de apresentação (0.4 · consistência dos fluxos)
 
-> **Novidades da 0.3**: Início como painel pessoal (Meu trabalho com chamados, tarefas e pendências; comunicados da intranet; notificações; mensagens do Teams), plugin demonstrativo **Chamados e Acompanhamento**, painel de trabalho para comentar e avançar tarefas, contrato de contribuições dos plugins, concessões individuais efetivas, exportação permanente × por solicitação, auditoria, e-mails simulados e indisponibilidade por fonte.
-> - Roteiro de apresentação: **[ROTEIRO.md](ROTEIRO.md)** (10 cenários, também no painel do apresentador)
-> - O que funciona, o que é simulado e o que está preparado: **[INTEGRACOES.md](INTEGRACOES.md)**
-> - A referência visual é a 0.2 aprovada (Liquid Glass); as novas telas usam os mesmos componentes.
+> **Novidades da 0.4** (o visual da 0.3 foi mantido):
+> - Operações revalidadas a cada tentativa, com o contexto do momento.
+> - Cancelamento seguro quando pessoa, ambiente ou registro mudam durante um envio, com rascunhos preservados.
+> - Avisos de disponibilidade fiéis ao comportamento, com tentativa automática agendada, pausa e retorno visual.
+> - Integrações identificadas como simulada, configurada ou validada, com o adaptador em uso. Destinos reais só a partir de endereços configurados ou informados pela origem.
+> - Contrato de plugin completo; Chamados é o primeiro módulo sem dependências no núcleo.
+> - Exportações com conteúdo exato registrado, revalidação no download e resultado explícito: arquivo gerado, simulado, falha ou bloqueado.
+>
+> Documentos:
+> - Correções e verificações: **[CORRECOES-0.4.md](CORRECOES-0.4.md)**
+> - Roteiro: **[ROTEIRO.md](ROTEIRO.md)** (14 cenários, também no painel do apresentador)
+> - Integrações: **[INTEGRACOES.md](INTEGRACOES.md)**
 
 ---
 

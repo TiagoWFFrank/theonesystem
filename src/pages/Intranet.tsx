@@ -7,10 +7,10 @@ import { useDemo } from '@/platform/store';
 import { useUrlState } from '@/platform/hooks';
 import { fmtDate, fmtRelative } from '@/platform/format';
 import { postsFor, reachLabel, inReach } from '@/platform/sources';
-import { integration, sharepointLink } from '@/platform/integrations';
+import { recordDestination, systemDestination } from '@/platform/integrations';
 import { BackToList, EmptyState, PageHeader } from '@/ui/core';
 import { COMPANIES } from '@/ui/brand';
-import { SourceNotice, SyncStamp } from '@/ui/source';
+import { IntegrationTag, SourceNotice, SyncStamp } from '@/ui/source';
 import { NotFoundInline } from './NotFound';
 import type { IntranetPost } from '@/platform/types';
 
@@ -79,7 +79,7 @@ export function IntranetList() {
 
 export function IntranetPostPage() {
   const { id } = useParams();
-  const { data, company, me, markRead } = useDemo();
+  const { data, company, me, markRead, validations } = useDemo();
   const p = data.posts.find((x) => x.id === id);
   useEffect(() => {
     if (!p || !me) return;
@@ -88,12 +88,13 @@ export function IntranetPostPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p?.id]);
   if (!p || !inReach(p.alcance, company, me)) return <NotFoundInline what="publicação neste ambiente" back="/intranet" />;
-  const link = p.url ?? sharepointLink(p.id);
+  const rec = recordDestination('sharepoint', p.url, 'Abrir no SharePoint', validations.sharepoint);
+  const sys = systemDestination('sharepoint', 'Abrir a intranet');
   return (
     <div className="content narrow" style={{ padding: 0 }}>
       <nav className="crumbs" aria-label="Você está em"><Link to="/inicio">Início</Link><span aria-hidden>›</span><Link to="/intranet">Intranet</Link><span aria-hidden>›</span><span aria-current="page">{p.categoria}</span></nav>
       <article className="card" style={{ overflow: 'hidden' }}>
-        <SourceNotice id="sharepoint" label="A intranet" cachedNote="Exibindo a versão salva desta publicação" />
+        <SourceNotice id="sharepoint" cachedNote="Exibindo a versão salva desta publicação." />
         {p.imagem && <PostImage kind={p.imagem} size={84} className="post-hero" />}
         <div className="card-body" style={{ paddingTop: p.imagem ? 4 : 24 }}>
           <span className="p-cat xs strong muted" style={{ textTransform: 'uppercase', letterSpacing: '.07em' }}>{p.categoria} · {p.area}</span>
@@ -102,11 +103,16 @@ export function IntranetPostPage() {
           <div className="article">{p.conteudo.map((t, i) => <p key={i}>{t}</p>)}</div>
         </div>
         <div className="form-actions" style={{ justifyContent: 'space-between', flexWrap: 'wrap' }}>
-          <span className="row small" style={{ gap: 8 }}><Newspaper size={16} className="muted" /><span><b>Origem:</b> Intranet AZIME · SharePoint (sistema interno). Publicação e administração seguem o processo da intranet.</span></span>
-          <span className="row">
+          <span className="stack-sm small" style={{ gap: 6 }}>
+            <span className="row" style={{ gap: 8 }}><Newspaper size={16} className="muted" /><span><b>Origem:</b> Intranet AZIME · SharePoint. Publicação e administração seguem o processo da intranet.</span></span>
+            <IntegrationTag id="sharepoint" />
+            {!rec.href && <span className="xs muted" data-dest-reason>{rec.reason}.</span>}
+          </span>
+          <span className="row-wrap">
             <BackToList fallback="/intranet" />
-            {link ? <a className="btn btn-primary" href={link} target="_blank" rel="noreferrer"><ArrowUpRight size={16} />Abrir no SharePoint</a>
-              : <button className="btn btn-secondary" disabled title={`Endereço do SharePoint não configurado (${integration('sharepoint').mode})`}><ArrowUpRight size={16} />Abrir no SharePoint · não configurado</button>}
+            {rec.href ? <a className="btn btn-primary" href={rec.href} target="_blank" rel="noreferrer"><ArrowUpRight size={16} />{rec.label}</a>
+              : sys.href ? <a className="btn btn-secondary" href={sys.href} target="_blank" rel="noreferrer" data-dest="sistema"><ArrowUpRight size={16} />{sys.label}</a>
+              : <button className="btn btn-secondary" disabled title={`${rec.reason}. ${sys.reason}.`}><ArrowUpRight size={16} />Abrir no SharePoint</button>}
           </span>
         </div>
       </article>

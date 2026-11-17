@@ -654,3 +654,18 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; font-size
 .witem .w-meta { min-width: 0; }
 .card-head { flex-wrap: wrap; row-gap: 6px; }
 @media (max-width: 760px) { .witem .w-due { grid-column: 2 / -1; text-align: left; } }
+
+/* ---------- 0.4: disponibilidade, operações e prioridade normalizada ---------- */
+.source-note.ok { background: var(--ok-soft); }
+.source-note .retry-line, .banner .retry-line { display: block; margin-top: 3px; color: var(--text-muted); font-size: 12.5px; }
+.retry-line svg { vertical-align: -2px; margin-right: 5px; }
+.prio.t-danger { color: var(--danger); } .prio.t-warn { color: var(--warn); } .prio.t-neutral { color: var(--text-subtle); }
+.checklist li[data-ok] { align-items: flex-start; } .checklist li[data-ok] svg { margin-top: 2px; flex-shrink: 0; }
+.checklist li .badge { flex-shrink: 0; }
+.integ-tag { white-space: nowrap; }
+@media (max-width: 640px) { .integ-tag { white-space: normal; } }
+/* banners com ação: em telas estreitas o botão desce para baixo do texto */
+.banner[data-op] { flex-wrap: wrap; }
+.banner[data-op] > .b-text { flex: 1 1 220px; min-width: 0; }
+.banner[data-op] > .btn { margin-left: auto; flex-shrink: 0; }
+@media (max-width: 520px) { .banner[data-op] > .btn { margin-left: 29px; } }

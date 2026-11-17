@@ -2,6 +2,7 @@ import { Headset } from 'lucide-react';
 import type { ModuleManifest } from '@/platform/types';
 import { ChamadoDetail, ChamadosList, TarefaDetail, TarefasList } from './pages';
 import { chamadosContrib } from './contrib';
+import { seedChamadosStore } from './seed';
 
 /**
  * Plugin DEMONSTRATIVO que representa a incorporação do sistema próprio de Chamados e Acompanhamento.
@@ -32,5 +33,7 @@ export const chamados: ModuleManifest = {
     { path: '/chamados/tarefas/:id', element: TarefaDetail },
     { path: '/chamados/:id', element: ChamadoDetail },
   ],
+  origin: { system: 'Sistema próprio · plugin', integration: 'chamados', outageNote: 'Comentários e transições são enviados quando você confirma; se o sistema continuar fora, nada é alterado e o texto fica guardado. Operações não são reenviadas automaticamente.' },
+  data: { seed: seedChamadosStore },
   contributes: chamadosContrib,
 };

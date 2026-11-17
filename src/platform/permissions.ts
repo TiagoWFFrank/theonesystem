@@ -1,3 +1,4 @@
+import { manifestOf } from './registry';
 import type { BrandId, DemoData, Grant, ModuleId, RoleId, Scope, User } from './types';
 
 /** Cargos: organizam a administração e servem de MODELO para concessões. Não concedem acesso sozinhos. */
@@ -17,14 +18,14 @@ export const SCOPE_LABEL: Record<Scope, string> = {
   empresa: 'Ambiente inteiro',
 };
 
-/** Módulos de negócio e todas as suas operações (acesso total dos líderes definidos na configuração inicial). */
-export const BUSINESS_ACTIONS: Partial<Record<ModuleId, string[]>> = {
-  inventario: ['ver', 'cadastrar', 'registrar_entrega'],
-  reverso: ['ver', 'abrir', 'aprovar', 'expedir'],
-  viagens: ['ver', 'registrar_compra'],
-  reservas: ['ver', 'reservar'],
-  chamados: ['ver', 'abrir', 'atender', 'gerenciar'],
-};
+/**
+ * Módulos de negócio e todas as suas operações (acesso total dos líderes definidos na configuração inicial).
+ * Vem do manifesto de cada plugin (`business` + `actions`): o núcleo não lista ações de plugins.
+ */
+export function businessActions(module: ModuleId): string[] | null {
+  const m = manifestOf(module);
+  return m?.business ? m.actions.map((a) => a.id) : null;
+}
 
 export const isLeader = (data: DemoData, user?: User) => !!user && data.config.leaders.includes(user.id);
 
@@ -36,7 +37,8 @@ export const isLeader = (data: DemoData, user?: User) => !!user && data.config.l
  */
 export function effectiveGrant(data: DemoData, user: User | undefined, company: BrandId, module: ModuleId): Grant | null {
   if (!user || user.status !== 'ativo' || !user.companies.includes(company)) return null;
-  if (isLeader(data, user) && BUSINESS_ACTIONS[module]) return { actions: [...BUSINESS_ACTIONS[module]!], scope: 'empresa' };
+  const biz = isLeader(data, user) ? businessActions(module) : null;
+  if (biz) return { actions: biz, scope: 'empresa' };
   const gr = user.grants?.[company]?.[module];
   return gr && gr.actions.length ? { actions: [...gr.actions], scope: gr.scope } : null;
 }
@@ -63,5 +65,6 @@ export function inScope(scope: Scope, user: User, ownerId: string | undefined, u
 export function grantSources(data: DemoData, user: User, company: BrandId, module: ModuleId) {
   const g = effectiveGrant(data, user, company, module);
   if (!g) return [];
-  return [{ source: isLeader(data, user) && BUSINESS_ACTIONS[module] ? 'Líder · configuração inicial' : 'Concessão individual', grant: g, individual: !(isLeader(data, user) && BUSINESS_ACTIONS[module]) }];
+  const leader = isLeader(data, user) && !!businessActions(module);
+  return [{ source: leader ? 'Líder · configuração inicial' : 'Concessão individual', grant: g, individual: !leader }];
 }

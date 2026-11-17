@@ -1,10 +1,11 @@
+import { originMeta } from '@/platform/registry';
 import { Download, KeyRound, ScrollText, UserPlus } from 'lucide-react';
 import type { ModuleManifest, WorkQueue } from '@/platform/types';
 
 const plus = (iso: string, d: number) => new Date(new Date(iso).getTime() + d * 86400000).toISOString();
 
 export const adminContrib: ModuleManifest['contributes'] = {
-  recordPath: (id) => (id.startsWith('ar') ? `/admin/acessos/${id}` : id.startsWith('x') ? `/exportacoes/${id}` : `/admin/colaboradores/${id}`),
+  recordPath: (id, c) => (c?.data.accessRequests.some((x) => x.id === id) ? `/admin/acessos/${id}` : c?.data.exportRequests.some((x) => x.id === id) ? `/exportacoes/${id}` : `/admin/colaboradores/${id}`),
   queues: (c) => {
     const d = c.data;
     const out: WorkQueue[] = [];
@@ -34,7 +35,7 @@ export const adminContrib: ModuleManifest['contributes'] = {
       out.push({ id: 'exp-decidir', origin: 'admin', label: 'Exportações para decidir', to: '/admin/exportacoes?aba=solicitacoes&situacao=pendente',
         items: d.exportRequests.filter((x) => x.companyId === c.company && x.status === 'pendente').map((x) => ({
           key: `admin:exp:${x.id}`, origin: 'admin' as const, companyId: x.companyId, recordId: x.id, userId: c.me.id, relation: 'aprovador' as const,
-          ref: x.numero, title: `Decidir exportação de ${x.module === 'reverso' ? 'Reverso' : x.module}`, subject: `${c.userName(x.requesterId)} · ${x.registros} registros · ${x.formato}`, status: 'Aguardando Gerência', tone: 'warn' as const, stage: 'aprovacao' as const,
+          ref: x.numero, title: `Decidir exportação de ${originMeta(x.module).name}`, subject: `${c.userName(x.requesterId)} · ${x.content.recordIds.length} registros · ${x.content.fields.length} campos · ${x.content.formato}`, status: 'Aguardando Gerência', tone: 'warn' as const, stage: 'aprovacao' as const,
           due: plus(x.criadoEm, 1), action: { label: 'Decidir', kind: 'abrir' as const, to: `/exportacoes/${x.id}` },
         })) });
     }

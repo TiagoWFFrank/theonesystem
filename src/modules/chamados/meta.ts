@@ -1,5 +1,6 @@
-import type { ChamadoStatus, Priority, TarefaStatus } from '@/platform/types';
+import type { PriorityTag } from '@/platform/types';
 import type { Tone } from '@/ui/core';
+import type { ChamadoStatus, ChPriority, TarefaStatus } from './model';
 
 export const CH_STATUS: Record<ChamadoStatus, { label: string; tone: Tone }> = {
   aberto: { label: 'Aberto', tone: 'warn' },
@@ -14,9 +15,11 @@ export const TF_STATUS: Record<TarefaStatus, { label: string; tone: Tone }> = {
   em_revisao: { label: 'Em revisão', tone: 'warn' },
   concluida: { label: 'Concluída', tone: 'ok' },
 };
-export const PRIORITY: Record<Priority, { label: string; tone: Tone; rank: number }> = {
+/** Escala do sistema de Chamados mapeada para a prioridade normalizada da plataforma. */
+export const PRIORITY: Record<ChPriority, PriorityTag> = {
   urgente: { label: 'Urgente', tone: 'danger', rank: 0 },
   alta: { label: 'Alta', tone: 'warn', rank: 1 },
   media: { label: 'Média', tone: 'neutral', rank: 2 },
   baixa: { label: 'Baixa', tone: 'neutral', rank: 3 },
 };
+export const prio = (p?: ChPriority) => (p ? PRIORITY[p] : undefined);

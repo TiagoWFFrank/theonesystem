@@ -1,4 +1,6 @@
 import { ClipboardCheck, FilePlus2 } from 'lucide-react';
+import { fmtDate } from '@/platform/format';
+import { RV_STATUS } from './meta';
 import type { ModuleManifest } from '@/platform/types';
 
 const plus = (iso: string, d: number) => new Date(new Date(iso).getTime() + d * 86400000).toISOString();
@@ -36,4 +38,14 @@ export const reversoContrib: ModuleManifest['contributes'] = {
     ...(c.can('reverso', 'aprovar') ? [{ id: 'rev-aprov', origin: 'reverso' as const, label: 'Aprovações de reverso', to: '/reverso/solicitacoes?fila=aprovacao', icon: ClipboardCheck, weight: 70 }] : []),
     ...(c.can('reverso', 'abrir') ? [{ id: 'rev-nova', origin: 'reverso' as const, label: 'Abrir solicitação de reverso', to: '/reverso/solicitacoes/nova', icon: FilePlus2, weight: 35 }] : []),
   ],
+  search: (c, t) => c.data.reversos
+    .filter((r) => r.companyId === c.company && c.sees('reverso', r.solicitanteId) && [r.numero, r.clienteNome, r.motivo, r.clienteCodigo].join(' ').toLowerCase().includes(t))
+    .map((r) => ({ title: `${r.numero} · ${r.motivo}`, sub: r.clienteNome, to: `/reverso/solicitacoes/${r.id}` })),
+  exports: {
+    label: 'Solicitações de reverso',
+    fields: [{ key: 'numero', label: 'Número' }, { key: 'motivo', label: 'Motivo' }, { key: 'cliente', label: 'Cliente' }, { key: 'situacao', label: 'Situação' }, { key: 'abertura', label: 'Abertura' }],
+    rows: (c, ids) => c.data.reversos.filter((r) => r.companyId === c.company && (!ids || ids.includes(r.id)) && c.sees('reverso', r.solicitanteId))
+      .map((r) => ({ id: r.id, label: r.numero, values: { numero: r.numero, motivo: r.motivo, cliente: `${r.clienteCodigo} ${r.clienteNome}`, situacao: RV_STATUS[r.status].label, abertura: fmtDate(r.criadoEm) } })),
+    history: (c, id) => c.data.events.filter((e) => e.module === 'reverso' && e.recordId === id).map((e) => `${fmtDate(e.ts)} ${e.action}`).join(' | '),
+  },
 };

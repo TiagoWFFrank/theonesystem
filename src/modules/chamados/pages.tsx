@@ -2,27 +2,33 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AlertTriangle, CheckCircle2, ChevronRight, CornerUpLeft, Eye, Headset, ListChecks, Loader2, Search, Send } from 'lucide-react';
-import { SourceNotice } from '@/ui/source';
+import { IntegrationTag, SourceNotice } from '@/ui/source';
+import { ExportButton } from '@/ui/export';
+import { draftKey, useDraft, useRecordOperation } from '@/ui/operation';
+import { OpFeedback } from '@/ui/WorkPanel';
+import { fmtTime } from '@/platform/format';
 import { useDemo } from '@/platform/store';
 import { useRecordVisit, useUrlState } from '@/platform/hooks';
 import { fmtDate, fmtDateTime, fmtRelative } from '@/platform/format';
 import { Avatar, BackToList, Badge, EmptyState, ErrorState, NoResults, PageHeader, SkeletonRows, Tabs, useSimLoad } from '@/ui/core';
 import { Timeline } from '@/ui/records';
-import { WorkPanel } from '@/ui/WorkPanel';
-import { useToast } from '@/ui/toast';
+import { WorkPanel, type PanelTarget } from '@/ui/WorkPanel';
 import { NotFoundInline } from '@/pages/NotFound';
 import { CH_STATUS, PRIORITY, TF_STATUS } from './meta';
 import { chamadosOps, findRec, reviewDecisions, seesChamado, transitionsFor } from './ops';
 import { chamadoFilters } from './contrib';
-import type { ChamadoStatus, TarefaStatus } from '@/platform/types';
+import { chStore, type ChamadoStatus, type ChPriority, type TarefaStatus } from './model';
+
+const CH = 'chamados' as const;
+const tgt = (recordId: string | null): PanelTarget | null => (recordId ? { origin: CH, recordId } : null);
 
 /** Aviso de indisponibilidade da origem, mantendo o conteúdo em cache utilizável. */
 export function ChamadosOutage() {
-  return <SourceNotice id="chamados" label="O sistema de Chamados" cachedNote="Exibindo dados em cache; comentários e transições ficam bloqueados até a conexão voltar" />;
+  return <SourceNotice id="chamados" cachedNote="Comentários e transições são enviados quando você confirma; se o sistema continuar fora, nada é alterado e o texto fica guardado. Operações não são reenviadas automaticamente." />;
 }
 
-function Prio({ p }: { p?: keyof typeof PRIORITY }) {
-  return p ? <span className={`prio ${p}`}>{PRIORITY[p].label}</span> : <span className="subtle xs">—</span>;
+function Prio({ p }: { p?: ChPriority }) {
+  return p ? <span className={`prio t-${PRIORITY[p].tone}`}>{PRIORITY[p].label}</span> : <span className="subtle xs">—</span>;
 }
 
 export function ChamadosList() {
@@ -36,7 +42,7 @@ export function ChamadosList() {
     if (!contrib) return [];
     if (f.visao === 'atribuidos') return chamadoFilters.atribuidos(contrib);
     if (f.visao === 'abertos') return chamadoFilters.abertos(contrib);
-    return contrib.data.chamados.filter((x) => x.companyId === company && seesChamado(contrib, { kind: 'chamado', ch: x }));
+    return chStore(contrib.data).chamados.filter((x) => x.companyId === company && seesChamado(contrib, { kind: 'chamado', ch: x }));
   }, [contrib, f.visao, company]);
   const pre = base.filter((x) => !f.q || `${x.numero} ${x.titulo} ${userName(x.solicitanteId)}`.toLowerCase().includes(f.q.toLowerCase()));
   const rows = pre.filter((x) => !f.situacao || x.status === f.situacao).sort((a, b) => PRIORITY[a.prioridade].rank - PRIORITY[b.prioridade].rank || (a.prazo ?? '').localeCompare(b.prazo ?? ''));
@@ -45,7 +51,8 @@ export function ChamadosList() {
   return (
     <>
       <PageHeader crumbs={[{ label: 'Chamados', to: '/chamados' }, { label: 'Chamados' }]} title="Chamados"
-        sub="Sistema de chamados incorporado como plugin · demonstração com dados do adaptador simulado." />
+        sub={<span className="row-wrap" style={{ gap: 8 }}>Sistema de chamados incorporado como plugin. <IntegrationTag id="chamados" /></span>}
+        actions={<ExportButton module="chamados" rows={rows} name={`chamados-${f.visao}`} filtros={`${f.visao === 'atribuidos' ? 'Atribuídos a mim' : f.visao === 'abertos' ? 'Que abri' : 'Todos do ambiente'}${f.situacao ? ` · ${CH_STATUS[f.situacao as ChamadoStatus].label}` : ''}${f.q ? ` · “${f.q}”` : ''}`} />} />
       <div className="card">
         <ChamadosOutage />
         <div className="list-tools">
@@ -97,7 +104,7 @@ export function ChamadosList() {
           </>
         )}
       </div>
-      <WorkPanel open={!!panel} onClose={() => setPanel(null)} origin="chamados" recordId={panel} ops={chamadosOps} />
+      <WorkPanel target={tgt(panel)} onClose={() => setPanel(null)} />
     </>
   );
 }
@@ -109,7 +116,7 @@ export function TarefasList() {
   const [panel, setPanel] = useState<string | null>(null);
   if (!contrib) return null;
   const base = f.visao === 'revisar' ? chamadoFilters.revisar(contrib) : f.visao === 'todas'
-    ? contrib.data.tarefas.filter((t) => t.companyId === company && seesChamado(contrib, findRec(contrib, t.id)!)) : chamadoFilters.minhasTarefas(contrib);
+    ? chStore(contrib.data).tarefas.filter((t) => { const r = findRec(contrib, t.id); return t.companyId === company && !!r && seesChamado(contrib, r); }) : chamadoFilters.minhasTarefas(contrib);
   const rows = base.filter((t) => !f.situacao || t.status === f.situacao).sort((a, b) => (a.prazo ?? '').localeCompare(b.prazo ?? ''));
   return (
     <>
@@ -133,7 +140,7 @@ export function TarefasList() {
               <thead><tr><th>Tarefa</th><th>Assunto</th><th>Responsável · revisor</th><th>Situação</th><th className="r">Prazo</th><th /></tr></thead>
               <tbody>
                 {rows.map((t) => {
-                  const ch = contrib.data.chamados.find((x) => x.id === t.chamadoId)!;
+                  const ch = chStore(contrib.data).chamados.find((x) => x.id === t.chamadoId)!;
                   const rev = f.visao === 'revisar';
                   return (
                     <tr key={t.id} onClick={() => nav(`/chamados/tarefas/${t.id}`)}>
@@ -153,28 +160,19 @@ export function TarefasList() {
           </div>
         )}
       </div>
-      <WorkPanel open={!!panel} onClose={() => setPanel(null)} origin="chamados" recordId={panel} ops={chamadosOps} />
+      <WorkPanel target={tgt(panel)} onClose={() => setPanel(null)} />
     </>
   );
 }
 
-/** Conversa + composer reutilizando as operações do plugin. */
+/** Conversa + composer: mesmas operações e mesma revalidação do painel de trabalho. */
 function Conversation({ recordId }: { recordId: string }) {
-  const { contrib, api, me, userName } = useDemo();
-  const toast = useToast();
-  const [text, setText] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState('');
-  if (!contrib || !api) return null;
+  const { contrib, me, userName, company } = useDemo();
+  const draft = useDraft(draftKey(me?.id, company, CH, recordId));
+  const op = useRecordOperation(CH, recordId, { getText: () => draft.text, onSuccess: () => draft.clear() });
+  if (!contrib) return null;
   const comments = chamadosOps.comments(contrib, recordId);
-  const send = () => {
-    if (!text.trim()) { setErr('Escreva o comentário antes de enviar.'); return; }
-    setBusy(true); setErr('');
-    setTimeout(() => {
-      try { chamadosOps.comment(api, recordId, text.trim()); setText(''); toast('Comentário registrado.'); } catch (e) { setErr((e as Error).message); }
-      setBusy(false);
-    }, 600);
-  };
+  const can = chamadosOps.canComment(contrib, recordId);
   return (
     <div className="stack">
       <div className="comments">
@@ -186,53 +184,48 @@ function Conversation({ recordId }: { recordId: string }) {
           </div>
         ))}
       </div>
-      <div className="composer">
-        <textarea className="textarea" aria-label="Novo comentário" placeholder="Escreva um comentário…" value={text} onChange={(e) => { setText(e.target.value); setErr(''); }} />
-        {err && <span className="error-msg" role="alert">{err}</span>}
-        <div className="row"><span className="spacer" /><button className="btn btn-primary btn-sm" disabled={busy} onClick={send}>{busy ? <Loader2 size={15} className="spin" /> : <Send size={15} />}Comentar</button></div>
-      </div>
+      {can.ok ? (
+        <div className="composer">
+          <textarea className="textarea" aria-label="Novo comentário" placeholder="Escreva um comentário…" value={draft.text} onChange={(e) => draft.setText(e.target.value)} />
+          <OpFeedback state={op.state} origin={CH} onRetry={op.retry} onCancel={op.cancel} onDismiss={op.dismiss} />
+          <div className="row"><span className="xs muted">{draft.text && draft.restoredAt ? `Rascunho guardado às ${fmtTime(draft.restoredAt)}` : ''}</span><span className="spacer" /><button className="btn btn-primary btn-sm" disabled={op.busy} onClick={() => op.run({ kind: 'comment' })}>{op.busy ? <Loader2 size={15} className="spin" /> : <Send size={15} />}Comentar</button></div>
+        </div>
+      ) : <p className="xs muted">{can.msg}</p>}
     </div>
   );
 }
 
-/** Botões de transição/decisão com retorno de erro e confirmação. */
+/** Botões de transição/decisão: revalidam situação e acesso no envio; retorno claro em falha. */
 function Actions({ recordId, decisions }: { recordId: string; decisions?: boolean }) {
-  const { contrib, api } = useDemo();
-  const toast = useToast();
-  const [busy, setBusy] = useState<string | null>(null);
+  const { contrib, me, company } = useDemo();
   const [need, setNeed] = useState<{ id: string; label: string } | null>(null);
-  const [text, setText] = useState('');
-  const [err, setErr] = useState('');
-  if (!contrib || !api) return null;
+  const k = draftKey(me?.id, company, CH, recordId);
+  const draft = useDraft(k ? `${k}|acao` : null);
+  const op = useRecordOperation(CH, recordId, { getText: () => draft.text, onSuccess: (i) => { if (i.kind === 'transition' && i.needsComment) draft.clear(); setNeed(null); } });
+  if (!contrib) return null;
   const list = decisions ? reviewDecisions(contrib, recordId) : transitionsFor(contrib, recordId);
-  if (!list.length) return null;
-  const go = (id: string, comment?: string) => {
-    setBusy(id); setErr('');
-    setTimeout(() => {
-      try { toast(chamadosOps.apply(api, recordId, id, comment)); setNeed(null); setText(''); } catch (e) { setErr((e as Error).message); }
-      setBusy(null);
-    }, 600);
-  };
+  if (!list.length && op.state.phase === 'idle') return null;
+  const go = (t: { id: string; label: string; needsComment?: boolean }) => op.run({ kind: 'transition', id: t.id, label: t.label, needsComment: t.needsComment });
   return (
     <div className="stack-sm" style={{ alignItems: 'flex-end' }}>
       <div className="row-wrap" style={{ justifyContent: 'flex-end' }}>
         {list.map((t) => (
-          <button key={t.id} className={`btn ${t.primary ? 'btn-primary' : 'btn-secondary'}`} disabled={!!busy} onClick={() => (t.needsComment ? setNeed(t) : go(t.id))}>
-            {busy === t.id ? <Loader2 size={16} className="spin" /> : t.id === 'devolver' ? <CornerUpLeft size={16} /> : t.primary ? <CheckCircle2 size={16} /> : null}{t.label}
+          <button key={t.id} className={`btn ${t.primary ? 'btn-primary' : 'btn-secondary'}`} disabled={op.busy} onClick={() => (t.needsComment ? setNeed(t) : go(t))}>
+            {op.state.phase === 'sending' && op.state.intent.kind === 'transition' && op.state.intent.id === t.id ? <Loader2 size={16} className="spin" /> : t.id === 'devolver' ? <CornerUpLeft size={16} /> : t.primary ? <CheckCircle2 size={16} /> : null}{t.label}
           </button>
         ))}
       </div>
       {need && (
         <div className="card card-pad" style={{ width: 'min(460px, 100%)' }}>
           <label className="label" htmlFor="need-text">{need.label}: comentário obrigatório</label>
-          <textarea id="need-text" className="textarea" style={{ marginTop: 6 }} value={text} onChange={(e) => setText(e.target.value)} />
+          <textarea id="need-text" className="textarea" style={{ marginTop: 6 }} value={draft.text} onChange={(e) => draft.setText(e.target.value)} />
           <div className="row" style={{ marginTop: 8, justifyContent: 'flex-end' }}>
             <button className="btn btn-secondary btn-sm" onClick={() => setNeed(null)}>Cancelar</button>
-            <button className="btn btn-primary btn-sm" disabled={!!busy} onClick={() => (text.trim() ? go(need.id, text.trim()) : setErr('Escreva o comentário.'))}>Confirmar</button>
+            <button className="btn btn-primary btn-sm" disabled={op.busy} onClick={() => go({ ...need, needsComment: true })}>Confirmar</button>
           </div>
         </div>
       )}
-      {err && <div className="banner banner-danger" role="alert" style={{ maxWidth: 520 }}><AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 2 }} /><span className="b-text small">{err}</span></div>}
+      <div style={{ width: 'min(520px, 100%)' }}><OpFeedback state={op.state} origin={CH} onRetry={op.retry} onCancel={op.cancel} onDismiss={op.dismiss} /></div>
     </div>
   );
 }
@@ -246,7 +239,7 @@ export function ChamadoDetail() {
   useRecordVisit('chamados', r?.kind === 'chamado' ? r.ch.id : undefined, r?.kind === 'chamado' ? `${r.ch.numero} · ${r.ch.titulo}` : undefined, `/chamados/${id}`);
   if (!contrib || !r || r.kind !== 'chamado' || r.ch.companyId !== company || !seesChamado(contrib, r)) return <NotFoundInline what="chamado" back="/chamados" />;
   const ch = r.ch;
-  const tarefas = data.tarefas.filter((t) => t.chamadoId === ch.id);
+  const tarefas = chStore(data).tarefas.filter((t) => t.chamadoId === ch.id);
   const events = data.events.filter((e) => e.recordId === ch.id);
   const rel = ch.responsavelId === contrib.me.id ? 'Sob sua responsabilidade' : ch.solicitanteId === contrib.me.id ? 'Você abriu este chamado' : 'Acompanhando';
   return (
@@ -290,10 +283,10 @@ export function ChamadoDetail() {
             <div className="label" style={{ marginBottom: 10 }}>Próxima ação</div>
             {transitionsFor(contrib, ch.id).length ? <Actions recordId={ch.id} /> : <p className="small muted">Nenhuma ação disponível para você nesta situação.</p>}
           </div>
-          <div className="card card-pad"><div className="label" style={{ marginBottom: 6 }}>Origem</div><p className="small muted">Registro do sistema de Chamados (adaptador simulado). Comentários e transições feitos na plataforma voltam para o sistema de origem na integração real.</p></div>
+          <div className="card card-pad"><div className="label" style={{ marginBottom: 6 }}>Origem</div><p className="small muted" style={{ marginBottom: 8 }}>Registro do sistema de Chamados. Comentários e transições feitos na plataforma são enviados ao sistema de origem pelo adaptador indicado abaixo.</p><IntegrationTag id="chamados" /></div>
         </aside>
       </div>
-      <WorkPanel open={!!panel} onClose={() => setPanel(null)} origin="chamados" recordId={panel} ops={chamadosOps} />
+      <WorkPanel target={tgt(panel)} onClose={() => setPanel(null)} />
     </>
   );
 }

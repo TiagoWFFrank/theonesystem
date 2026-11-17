@@ -3,16 +3,15 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowUpRight, CheckCheck, Eye, ShieldQuestion, User as UserIcon } from 'lucide-react';
 import { useDemo } from '@/platform/store';
-import { collectWork, STAGE_LABEL, taskOpsFor } from '@/platform/work';
+import { collectWork, contributingOrigins, sortWork, STAGE_LABEL, STAGE_ORDER, taskOpsFor } from '@/platform/work';
 import { fmtDate, fmtDateShort } from '@/platform/format';
-import { integration } from '@/platform/integrations';
 import type { OriginId, WorkItem, WorkStage } from '@/platform/types';
 import { Badge, Dialog, EmptyState } from './core';
 import { ORIGINS, OriginChip } from './origin';
-import { WorkPanel } from './WorkPanel';
-import { PRIORITY } from '@/modules/chamados/meta';
-
-const STAGE_ORDER: WorkStage[] = ['aprovacao', 'acao', 'andamento', 'acompanhando', 'informativo'];
+import { IntegrationTag, SourceNotice } from './source';
+import { originMeta } from '@/platform/registry';
+import { WorkPanel, type PanelTarget } from './WorkPanel';
+export { sortWork };
 const DAY = 86400000;
 export function dueInfo(it: Pick<WorkItem, 'due' | 'dueLabel'>) {
   if (!it.due) return null;
@@ -24,10 +23,6 @@ export function dueInfo(it: Pick<WorkItem, 'due' | 'dueLabel'>) {
   if (d === 1) return { text: `${label}: amanhã`, cls: 'soon' };
   return { text: `${label} ${fmtDateShort(it.due)}`, cls: '' };
 }
-export const sortWork = (a: WorkItem, b: WorkItem) =>
-  STAGE_ORDER.indexOf(a.stage) - STAGE_ORDER.indexOf(b.stage)
-  || (a.priority ? PRIORITY[a.priority].rank : 4) - (b.priority ? PRIORITY[b.priority].rank : 4)
-  || (a.due ?? '9').localeCompare(b.due ?? '9');
 
 const REL: Record<WorkItem['relation'], { label: string; icon: typeof Eye }> = {
   responsavel: { label: 'Sob sua responsabilidade', icon: UserIcon },
@@ -45,13 +40,19 @@ export function useWork() {
   }, [data, me, company]);
 }
 
+/** Avisos de disponibilidade das origens que alimentam Meu trabalho (cada uma no seu próprio aviso). */
+export function WorkSourceNotices() {
+  const { data, me, company } = useDemo();
+  return <>{contributingOrigins(data, me, company).map((o) => <SourceNotice key={o} id={o} cachedNote={originMeta(o).outageNote} />)}</>;
+}
+
 /** Lista de trabalho com filtros por origem e situação; contagens = itens apresentados. */
 export function WorkList({ limit, showQueues = true, compactHeader }: { limit?: number; showQueues?: boolean; compactHeader?: React.ReactNode }) {
   const { queues, items } = useWork();
   const nav = useNavigate();
   const [orig, setOrig] = useState<OriginId | ''>('');
   const [stage, setStage] = useState<WorkStage | ''>('');
-  const [panel, setPanel] = useState<WorkItem | null>(null);
+  const [panel, setPanel] = useState<PanelTarget | null>(null);
   const [ext, setExt] = useState<WorkItem | null>(null);
   const byStage = items.filter((i) => !orig || i.origin === orig);
   const byOrig = items.filter((i) => !stage || i.stage === stage);
@@ -60,7 +61,7 @@ export function WorkList({ limit, showQueues = true, compactHeader }: { limit?: 
   const stages = STAGE_ORDER.filter((s) => items.some((i) => i.stage === s));
   const visible = limit ? shown.slice(0, limit) : shown;
   const act = (it: WorkItem) => {
-    if (it.action.kind === 'painel' && taskOpsFor(it.origin, it.recordId)) setPanel(it);
+    if (it.action.kind === 'painel' && taskOpsFor(it.origin)) setPanel({ origin: it.origin, recordId: it.recordId });
     else if (it.action.kind === 'externo') setExt(it);
     else nav(it.action.to);
   };
@@ -96,7 +97,7 @@ export function WorkList({ limit, showQueues = true, compactHeader }: { limit?: 
                   <div className="w-title" title={it.title}>{it.title}</div>
                   <div className="w-meta">
                     <Badge tone={it.tone}>{it.status}</Badge>
-                    {it.priority && <span className={`prio ${it.priority}`}>{PRIORITY[it.priority].label}</span>}
+                    {it.priority && <span className={`prio t-${it.priority.tone}`}>{it.priority.label}</span>}
                     {it.subject && <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%', minWidth: 0 }}>{it.subject}</span>}
                   </div>
                 </div>
@@ -115,16 +116,18 @@ export function WorkList({ limit, showQueues = true, compactHeader }: { limit?: 
           {showQueues && queues.map((q) => <Link key={q.id} to={q.to}>{q.label} <b>{q.items.length}</b></Link>)}
         </div>
       ) : null}
-      <WorkPanel open={!!panel} onClose={() => setPanel(null)} origin={panel?.origin ?? 'chamados'} recordId={panel?.recordId ?? null} ops={panel ? taskOpsFor(panel.origin, panel.recordId) : undefined} />
+      <WorkPanel target={panel} onClose={() => setPanel(null)} />
       <Dialog open={!!ext} onClose={() => setExt(null)} title={ext?.title ?? ''} desc={ext ? `${ORIGINS[ext.origin].name} · ${ORIGINS[ext.origin].system}` : ''}
         footer={<>
           <button className="btn btn-secondary" onClick={() => setExt(null)}>Fechar</button>
           {ext?.action.to ? <a className="btn btn-primary" href={ext.action.to} target="_blank" rel="noreferrer"><ArrowUpRight size={16} />{ext.action.label}</a>
-            : <button className="btn btn-primary" disabled><ArrowUpRight size={16} />{ext?.action.label} · não configurado</button>}
+            : <button className="btn btn-primary" disabled title={ext?.action.reason}><ArrowUpRight size={16} />{ext?.action.label}</button>}
         </>}>
         {ext && <div className="stack-sm small">
           <p>{ext.subject}{ext.due ? ` · prazo ${fmtDate(ext.due)}` : ''}</p>
-          <div className="banner banner-info"><span className="b-text">Esta pendência vem do sistema de {ORIGINS[ext.origin].name} ({ORIGINS[ext.origin].system}), que continua sendo o lugar de responder. Integração <b>{integration(ext.origin === 'feedback' ? 'feedback' : 'sharepoint').mode === 'real' ? 'real' : 'simulada'}</b>: o endereço real será configurado na etapa de integração.</span></div>
+          <div className="banner banner-info"><span className="b-text">Esta pendência vem do sistema de {ORIGINS[ext.origin].name} ({ORIGINS[ext.origin].system}), que continua sendo o lugar de responder.
+            {ext.action.to ? ' O botão abre o endereço informado pela origem ou configurado para o sistema.' : ` Sem destino para abrir: ${ext.action.reason ?? 'endereço não disponível'}.`}</span></div>
+          <IntegrationTag id={ORIGINS[ext.origin].integration} />
         </div>}
       </Dialog>
     </>

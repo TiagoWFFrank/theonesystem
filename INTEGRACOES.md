@@ -1,73 +1,99 @@
 # Integrações · o que funciona, o que é simulado e o que está preparado
 
-Versão 0.3. **Todas as integrações externas são simuladas** com dados demonstrativos. Os adaptadores estão isolados para que a etapa de integração substitua apenas a implementação, sem mudar as telas.
+Versão 0.4. **Todas as integrações externas usam adaptadores simulados** com dados demonstrativos. A interface sempre mostra a situação de cada integração e o adaptador efetivamente em uso.
 
-## O que funciona localmente (no navegador, sem backend)
+## Situações de uma integração
 
-- Navegação completa, três identidades × claro/escuro, desktop e celular.
-- Painel pessoal: Meu trabalho (contribuições dos plugins e fontes), filtros por origem e situação com contagens iguais às listas, comunicados, notificações (mesmo estado no painel e no sino), mensagens do Teams, ações frequentes e atividades.
-- Plugin demonstrativo **Chamados e Acompanhamento**: listas, detalhe do chamado, tarefas, comentários, transições válidas por situação e permissão, revisão (aprovação) dentro do módulo.
-- Painel de trabalho: comentar e avançar a partir do Início usando as regras do plugin.
-- Regras administrativas: concessões individuais por ambiente × módulo × ação × escopo; líderes com acesso total pela configuração inicial; solicitações de acesso; exportação permanente e por solicitação; auditoria.
-- Notificações internas + **e-mails simulados** gerados pelo mesmo evento (caixa de saída no painel do apresentador).
-- Indisponibilidade por fonte com conteúdo em cache, horário da última sincronização, “Tentar novamente” e retorno de operações malsucedidas.
-- Persistência local (`localStorage`) e restauração do cenário.
-- CSV real na exportação (o visualizador da prévia pode bloquear downloads; localmente funciona).
+| Situação | Quando | Adaptador em uso | Como aparece |
+|---|---|---|---|
+| **Simulado** | Nenhum endereço configurado | Simulado | “Adaptador simulado · dados demonstrativos” |
+| **Configurado · não validado** | Endereço definido na variável de ambiente, conexão ainda não confirmada | Simulado | Etiqueta azul + endereço |
+| **Conexão validada** | O backend de integração confirmou a conexão | Simulado até o adaptador real ser implementado (`realAdapter`) | Etiqueta verde + “adaptador simulado” |
+| **Falha na validação** | A validação foi tentada e falhou | Simulado | Etiqueta vermelha + motivo |
 
-## O que está simulado
+- A validação é pedida ao backend de integração (`VITE_INTEGRATION_API` → `GET /integracoes/<id>/status`). O navegador nunca recebe credenciais. Sem backend configurado, a validação informa que não pode ser feita.
+- Nesta versão nenhum adaptador real foi implementado. Por isso, mesmo com conexão validada, os dados continuam vindo do adaptador simulado, e a interface diz isso.
+- Arquivo: `src/platform/integrations.ts` (`integrationStatus`, `validateIntegration`).
 
-| Integração | Simulação nesta versão | Arquivo |
-|---|---|---|
-| Conta Microsoft (Entra ID) | Seletor de contas e verificação de liberação pela TI | `src/pages/Entrada.tsx` |
-| Intranet (SharePoint) | Publicações demonstrativas com alcance explícito | `src/platform/seed03.ts`, `src/platform/sources.ts` |
-| Feedback (SharePoint) | Pendências de ciclo de avaliação; “Abrir no Feedback” sem destino | `src/platform/sources.ts` |
-| Chamados (sistema próprio) | Chamados, tarefas, comentários e transições locais | `src/modules/chamados/ops.ts` |
-| Microsoft Teams | Mensagens e conversas de exemplo, somente leitura | `src/platform/seed03.ts`, `src/ui/feeds.tsx` |
-| E-mail (Exchange) | Caixa de saída local; nada é enviado | `src/platform/store.tsx` (`notify`) |
-| XLSX / PDF | Registro da exportação sem gerar o arquivo | `src/ui/export.tsx` |
+### Destinos (abrir registros e conversas)
 
-## Pontos preparados para a integração real
-
-Configuração: `src/platform/integrations.ts`. Destinos reais (abrir no Teams/SharePoint) **só aparecem quando o endereço está configurado**. Credenciais ficam no backend, nunca no navegador.
+- **Registro** (publicação, conversa, item de Feedback): só abre o endereço **fornecido pela origem** (`webUrl` do Graph, `url` do item). Registros do adaptador simulado não têm endereço real; o botão fica desabilitado e o motivo aparece.
+- **Sistema** (página inicial da intranet, do Feedback, Teams do tenant): usa o **endereço configurado**. Só aparece quando a variável correspondente existe.
+- Nenhum link é montado a partir de nomes ou identificadores demonstrativos.
+- Arquivo: `recordDestination` e `systemDestination` em `src/platform/integrations.ts`.
 
 | Variável | Uso |
 |---|---|
-| `VITE_ENTRA_TENANT` | Login OIDC com Microsoft Entra ID → sessão no backend (Supabase Auth) |
-| `VITE_SHAREPOINT_SITE` | Site da intranet (Graph: páginas de notícias / lista de comunicados) |
-| `VITE_FEEDBACK_URL` | App de Feedback no SharePoint |
+| `VITE_ENTRA_TENANT` | Login OIDC com Microsoft Entra ID, sessão no backend |
+| `VITE_SHAREPOINT_SITE` | Site da intranet. Também é o destino “Abrir a intranet” |
+| `VITE_FEEDBACK_URL` | App de Feedback. Também é o destino “Abrir o Feedback” |
 | `VITE_CHAMADOS_API` | API do sistema de Chamados |
-| `VITE_TEAMS_ENABLED` | Graph `/me/chats` + mensagens de canais permitidos; deep links |
-| `VITE_MAIL_SENDER` | Remetente do envio pelo backend (Graph `sendMail` ou SMTP) |
+| `VITE_TEAMS_TENANT` | Tenant do Teams (“Abrir o Teams”); conversas usam o `webUrl` de cada uma |
+| `VITE_MAIL_SENDER` | Remetente do envio pelo backend (Graph `sendMail`) |
+| `VITE_INTEGRATION_API` | Backend que valida conexões e guarda credenciais |
+
+## O que funciona localmente (no navegador, sem backend)
+
+- Painel pessoal, plugin Chamados, painel de trabalho, concessões individuais, solicitações de acesso, auditoria, notificações e e-mails simulados, três identidades × claro/escuro, desktop e celular.
+- **Operações com revalidação** (`src/ui/operation.tsx`): cada envio e cada nova tentativa conferem, com o estado do momento, pessoa, ambiente, módulo habilitado, registro, permissão e situação. Troca de pessoa, ambiente ou registro, fechamento do painel e saída da tela antes da confirmação cancelam o envio sem alterar nada. O texto fica guardado como rascunho por pessoa × ambiente × registro e sobrevive a recarregar a página.
+- **Disponibilidade** (`src/platform/store.tsx`, `src/ui/source.tsx`): a plataforma distingue o estado real do sistema externo (controlado pelo apresentador) do que ela conhece. A queda é percebida ao consultar. A volta só é percebida numa nova tentativa: automática a 15, 30 e 60 s, com contagem visível, pausa e retomada, ou manual em “Tentar agora”. A reconexão mostra um retorno verde e atualiza o horário do cache. Operações (comentários, transições) **não** são reenviadas automaticamente.
+- **Exportações** (`src/platform/exports.ts`, `src/ui/export.tsx`, `src/pages/ExportRequest.tsx`): o conteúdo exato fica registrado e é verificado por um código (hash). O download é revalidado. CSV é gerado de verdade.
+- Persistência local (`localStorage`; rascunhos em `sessionStorage`) e restauração do cenário.
+
+## O que está simulado
+
+| Integração | Simulação | Arquivo |
+|---|---|---|
+| Conta Microsoft | Seletor de contas e verificação de liberação | `src/pages/Entrada.tsx` |
+| Intranet e Feedback (SharePoint) | Publicações e pendências demonstrativas | `src/platform/seed03.ts`, `src/platform/sources.ts` |
+| Chamados (sistema próprio) | Chamados, tarefas, comentários e transições locais | `src/modules/chamados/ops.ts`, `seed.ts` |
+| Microsoft Teams | Conversas de exemplo, somente leitura | `src/ui/feeds.tsx` |
+| E-mail | Caixa de saída local; nada é enviado | `src/platform/store.tsx` (`notify`) |
+| XLSX / PDF | Conteúdo conferido, **nenhum arquivo produzido** (“exportação simulada”) | `src/ui/export.tsx` |
+| Sistemas fora do ar | Interruptores “Fora do ar” no painel do apresentador | `src/layout/Presenter.tsx` |
+| Ações de outras pessoas | “Eventos de outras pessoas” no painel do apresentador | `src/layout/demoEvents.ts` |
+
+## Contrato dos plugins
+
+Declarado em `ModuleManifest` (`src/platform/types.ts`). O núcleo consome só o contrato. Ele não importa tipos, prioridades, situações nem identificadores de nenhum plugin; Chamados é o primeiro caso migrado.
+
+| Campo | O que o plugin fornece |
+|---|---|
+| `actions`, `business` | Ações que o plugin declara. Para módulos de negócio, é a lista concedida aos líderes da configuração inicial |
+| `origin` | Sistema de origem, integração usada e texto do aviso de indisponibilidade |
+| `data.seed` | Estado inicial dos próprios dados, guardado em `data.ext.<plugin>` |
+| `contributes.queues` | Filas de Meu trabalho. Cada item identifica origem, ambiente, registro e pessoa; a prioridade usa a escala normalizada (`PriorityTag`: rótulo, ordem, tom) |
+| `contributes.quickActions` | Ações frequentes |
+| `contributes.recordPath(id, ctx)` | Destino de um registro, resolvido pelos dados e não pelo formato do id |
+| `contributes.taskOps` | Painel de trabalho: `view` (com aviso opcional, ex.: “decisão só no módulo”), `comments`, `transitions`, `canComment`, `checkTransition` (distingue permissão retirada de situação alterada), `comment`, `apply` |
+| `contributes.search` | Resultados da busca global |
+| `contributes.exports` | Campos, linhas visíveis para a pessoa e histórico de cada registro |
+
+Inventário, Reverso e Viagens também passaram a fornecer `search` e `exports`. O núcleo não tem mais colunas nem buscas fixas desses módulos.
 
 ### Chamados e Acompanhamento: adaptação do sistema existente
 
-O plugin demonstrativo define o contrato que o sistema real precisa atender (`src/modules/chamados/ops.ts`):
+Adaptador em `src/modules/chamados/ops.ts`. Cada operação chama `api.call('chamados')`, ponto onde a chamada real à API entra. Se o sistema não responder, a chamada lança `OpError('indisponivel')`.
 
-1. **Leitura**: chamados atribuídos, chamados abertos pela pessoa, tarefas por responsável e por revisor, por ambiente (marca).
-2. **Comentários**: listar e incluir, preservando autor, data e origem (“pelo painel”).
-3. **Transições**: a lista de transições válidas por situação e permissão deve vir do sistema de origem; a plataforma apenas apresenta e executa.
-4. **Revisão/aprovação**: decidida dentro do módulo; o painel apenas abre o registro.
-5. **Eventos**: cada operação devolve o evento para histórico, notificação e e-mail.
-6. **Mapeamentos a validar**: usuários (e-mail Microsoft ↔ usuário do sistema), filas ↔ setores, situações ↔ etapas da plataforma, ambientes ↔ empresas.
+1. **Leitura**: chamados atribuídos, chamados abertos pela pessoa, tarefas por responsável e por revisor, por ambiente.
+2. **Comentários**: listar e incluir (autor, data, “pelo painel”).
+3. **Transições**: lista válida por situação e permissão, conferida de novo no envio. Respostas distintas para permissão e situação.
+4. **Revisão/aprovação**: decidida dentro do módulo; o painel só abre o registro.
+5. **Eventos**: cada operação gera histórico, notificação e e-mail.
+6. **Mapeamentos a validar**: usuários (e-mail Microsoft ↔ sistema), filas ↔ setores, situações ↔ etapas, ambientes ↔ empresas.
 
-### Contrato de contribuição dos plugins
+## Exportações
 
-Cada plugin declara em `contributes` (ver `src/platform/types.ts`):
+- **Permanente**: cargos autorizados exportam direto; a regra é conferida no clique.
+- **Por solicitação**: o pedido registra ambiente, módulo, registros (ids e rótulos), campos, formato, inclusão do histórico, filtros, versão da regra e um hash do conteúdo. A Gerência aprova exatamente esse conteúdo e só pode aprovar se ele couber na regra atual.
+- **Download**: revalida pessoa, ambiente, autorização (hash igual ao aprovado), acesso atual ao módulo, regra atual (campos, formato, cargo, histórico) e acesso a cada registro. O arquivo é montado só com os registros e campos autorizados e conferido pelo hash.
+- **Resultados distintos**: arquivo gerado, exportação simulada (XLSX/PDF), falha na geração (serviço de arquivos ou navegador; permite nova tentativa) e download bloqueado (com o motivo). Todos ficam na solicitação e na auditoria.
+- **Regra alterada**: cada alteração cria uma nova versão. Antes de salvar, a Gerência vê quais aprovações a mudança vai bloquear.
 
-- `queues(ctx)` → filas de trabalho com itens identificados por **origem, ambiente, registro e usuário destinatário/responsável**, situação, prioridade, prazo e ação (`painel`, `abrir` ou `externo`).
-- `quickActions(ctx)` → ações rápidas ponderadas.
-- `recordPath(id)` → destino de navegação usado por notificações, auditoria, busca e recentes.
-- `taskOps` → operações para o painel de trabalho (ver, comentar, transições, aplicar), usando as regras do próprio módulo.
+## Regras de acesso
 
-A plataforma coleta tudo em `src/platform/work.ts`. As filas usam as mesmas regras dos filtros das listas de destino, garantindo que a contagem seja o número de linhas. Fontes externas (Feedback) usam o mesmo contrato em `src/platform/sources.ts`.
-
-## Regras de acesso implementadas
-
-- A TI libera previamente a conta Microsoft (`status: aguardando → ativo`).
-- A entrada permite escolher entre os ambientes autorizados.
-- Líderes da configuração inicial (`config.leaders`) têm todas as ações dos módulos de negócio em todos os ambientes vinculados.
-- Demais colaboradores: o acesso efetivo é **exatamente** a concessão individual (ambiente × módulo × ações × escopo). Cargos são modelos para preencher concessões, não somam acesso. A TI concede e retira ações uma a uma.
-- Líderes solicitam acessos para a equipe; a TI aplica.
-- Exportações: autorização permanente ou por solicitação com decisão da Gerência, por módulo.
-- Registros são preservados (bloqueio, cancelamento, desativação de plugin mantêm dados e histórico).
-- Auditoria de comentários, alterações de tarefa, decisões, acessos e exportações em `/admin/auditoria`.
+- A TI libera previamente a conta Microsoft. Na entrada, a pessoa escolhe entre os ambientes autorizados.
+- Líderes da configuração inicial têm todas as ações dos módulos de negócio em todos os ambientes vinculados.
+- Para os demais, o acesso efetivo é exatamente a concessão individual. Cargos são modelos, não somam acesso.
+- Líderes solicitam acessos e a TI aplica. Retiradas valem na hora, inclusive para operações e downloads já iniciados.
+- Registros são preservados, e a auditoria cobre comentários, tarefas, decisões, acessos e exportações.

@@ -3,18 +3,18 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowRight, CheckCheck, Newspaper } from 'lucide-react';
 import { useDemo } from '@/platform/store';
-import { collectQuickActions, taskOpsFor } from '@/platform/work';
+import { collectQuickActions, recordPath, taskOpsFor } from '@/platform/work';
 import { postsFor } from '@/platform/sources';
 import { fmtRelative } from '@/platform/format';
-import { ALL_MODULES, useVisibleModules } from '@/layout/modules';
+import { useVisibleModules } from '@/layout/modules';
 import { COMPANIES, Monogram } from '@/ui/brand';
 import { ORIGINS } from '@/ui/origin';
 import { SourceNotice, SyncStamp } from '@/ui/source';
-import { WorkPanel } from '@/ui/WorkPanel';
-import { dueInfo, useWork, WorkList } from '@/ui/work';
+import { WorkPanel, type PanelTarget } from '@/ui/WorkPanel';
+import { dueInfo, useWork, WorkList, WorkSourceNotices } from '@/ui/work';
 import { NotificationsCard, TeamsCard } from '@/ui/feeds';
 import { PostCard } from './Intranet';
-import type { ModuleId, RecentItem, WorkItem } from '@/platform/types';
+import type { ModuleId, OriginId, RecentItem } from '@/platform/types';
 
 function greeting() {
   const h = Number(new Date().toLocaleString('pt-BR', { hour: '2-digit', hour12: false, timeZone: 'America/Sao_Paulo' }));
@@ -22,25 +22,26 @@ function greeting() {
 }
 
 export default function Inicio() {
-  const { me, company, data, down } = useDemo();
+  const { me, company, data } = useDemo();
   const nav = useNavigate();
   const mods = useVisibleModules();
   const { items } = useWork();
-  const [panel, setPanel] = useState<Pick<WorkItem, 'origin' | 'recordId'> | null>(null);
+  const [panel, setPanel] = useState<PanelTarget | null>(null);
   const [params, setParams] = useSearchParams();
-  // atalho do roteiro: /inicio?painel=<registro> abre o painel de trabalho
+  // atalho do roteiro: /inicio?painel=<origem>:<registro> abre o painel de trabalho
   useEffect(() => {
-    const id = params.get('painel');
-    if (id) { setPanel({ origin: 'chamados', recordId: id }); params.delete('painel'); setParams(params, { replace: true }); }
+    const v = params.get('painel');
+    const [origin, id] = v?.includes(':') ? v.split(':') : [];
+    if (origin && id) { setPanel({ origin: origin as OriginId, recordId: id }); params.delete('painel'); setParams(params, { replace: true }); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [params.get('painel')]);
   if (!me) return null;
   const top = items.find((i) => i.stage === 'acao' || i.stage === 'aprovacao') ?? items[0];
   const quick = collectQuickActions(data, me, company).slice(0, 4);
   const posts = postsFor(data, company, me).slice(0, 3);
   const pendingCount = items.filter((i) => i.stage === 'acao' || i.stage === 'aprovacao').length;
 
-  const linkOf = (m: ModuleId, id: string) => ALL_MODULES.find((x) => x.id === m)?.contributes?.recordPath?.(id) ?? '/inicio';
+  const linkOf = (m: ModuleId, id: string) => recordPath(m, id, data);
   const fromEvents: RecentItem[] = data.events.filter((e) => e.actorId === me.id).map((e) => ({
     module: e.module, recordId: e.recordId, label: e.recordLabel, action: e.action.split(' —')[0].split(':')[0], ts: e.ts, companyId: e.companyId, link: linkOf(e.module, e.recordId),
   }));
@@ -53,7 +54,7 @@ export default function Inicio() {
   const topDue = top ? dueInfo(top) : null;
   const openTop = () => {
     if (!top) return;
-    if (top.action.kind === 'painel' && taskOpsFor(top.origin, top.recordId)) setPanel(top); else nav(top.action.to.startsWith('http') ? '/pendencias' : top.action.to || '/pendencias');
+    if (top.action.kind === 'painel' && taskOpsFor(top.origin)) setPanel({ origin: top.origin, recordId: top.recordId }); else nav(top.action.to.startsWith('http') ? '/pendencias' : top.action.to || '/pendencias');
   };
   const TopIcon = top ? ORIGINS[top.origin].icon : CheckCheck;
 
@@ -92,13 +93,13 @@ export default function Inicio() {
               <span className="xs muted hide-mobile">Chamados, tarefas e pendências dos módulos</span>
               <Link to="/pendencias" className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }}>Ver tudo<ArrowRight size={15} /></Link>
             </div>
-            <SourceNotice id="chamados" label="O sistema de Chamados" cachedNote="Chamados e tarefas abaixo vêm do cache; comentar e avançar fica bloqueado até a conexão voltar" />
+            <WorkSourceNotices />
             <WorkList limit={7} />
           </section>
 
           <section aria-labelledby="in-h" id="intranet">
             <div className="section-head"><h2 id="in-h" className="section-title">Comunicados da intranet</h2><SyncStamp id="sharepoint" /><Link to="/intranet" className="link">Ver todos</Link></div>
-            {down('sharepoint') && <div className="card" style={{ overflow: 'hidden' }}><SourceNotice id="sharepoint" label="A intranet" /></div>}
+            <SourceNotice id="sharepoint" boxed />
             {posts.length === 0 ? <div className="card"><p className="small muted" style={{ padding: 20 }}><Newspaper size={15} /> Nenhuma publicação para este ambiente.</p></div> : (
               <div className="posts" style={{ marginTop: 12 }}>{posts.map((p, i) => <PostCard key={p.id} p={p} featured={i === 0 && !!p.destaque} />)}</div>
             )}
@@ -129,7 +130,7 @@ export default function Inicio() {
           </section>
         </aside>
       </div>
-      <WorkPanel open={!!panel} onClose={() => setPanel(null)} origin={panel?.origin ?? 'chamados'} recordId={panel?.recordId ?? null} ops={panel ? taskOpsFor(panel.origin, panel.recordId) : undefined} />
+      <WorkPanel target={panel} onClose={() => setPanel(null)} />
     </>
   );
 }

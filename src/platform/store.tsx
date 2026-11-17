@@ -4,10 +4,34 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { seedData } from './seed';
 import { effectiveGrant, moduleAvailability, inScope, isLeader } from './permissions';
 import { uid } from './format';
-import type { AuditKind, BrandId, ContribCtx, DemoData, EmailMessage, Grant, ModuleId, Notification, OriginId, PlatformApi, Session, SourceId, User } from './types';
+import { healthLabel, originMeta } from './registry';
+import { validateIntegration, type IntegrationId, type Validation } from './integrations';
+import { OpError } from './types';
+import type { AuditKind, BrandId, ContribCtx, DemoData, EmailMessage, Grant, HealthId, ModuleId, Notification, PlatformApi, Session, User } from './types';
 
-const DATA_KEY = 'azime-demo-data-v3';
-const SESSION_KEY = 'azime-demo-session-v3';
+const DATA_KEY = 'azime-demo-data-v4';
+const SESSION_KEY = 'azime-demo-session-v4';
+
+/**
+ * Disponibilidade CONHECIDA pela plataforma (diferente do estado real do sistema externo, que o apresentador controla).
+ * A plataforma descobre a queda ao consultar e só descobre a volta numa nova tentativa (automática ou manual).
+ */
+export interface Health {
+  status: 'ok' | 'down' | 'checking';
+  since?: string;
+  /** tentativas de reconexão já feitas */
+  attempts: number;
+  /** horário (ms) da próxima tentativa automática; ausente = sem agendamento */
+  nextAt?: number;
+  /** tentativas automáticas ativas */
+  auto: boolean;
+  restoredAt?: number;
+  lastCheck?: string;
+}
+/** Intervalos das tentativas automáticas (curtos para a apresentação). */
+export const RETRY_DELAYS = [15_000, 30_000, 60_000];
+const delayFor = (attempts: number) => RETRY_DELAYS[Math.min(attempts, RETRY_DELAYS.length - 1)];
+const CHECK_LATENCY = 800;
 
 function load<T>(key: string): T | null {
   try {
@@ -25,11 +49,6 @@ function save(key: string, value: unknown) {
   }
 }
 
-/** Nome exibido de cada origem (assunto de e-mail, etiquetas) */
-export const ORIGIN_NAME: Partial<Record<OriginId, string>> = {
-  inventario: 'Inventário', reverso: 'Reverso', viagens: 'Viagens', reservas: 'Reservas', chamados: 'Chamados', admin: 'Administração',
-  sharepoint: 'Intranet', feedback: 'Feedback', teams: 'Teams', email: 'E-mail',
-};
 
 const defaultSession: Session = { userId: null, companyId: 'azime', theme: 'light', sim: 'normal', sidebarCollapsed: false };
 
@@ -46,12 +65,20 @@ interface Ctx {
   available: (m: ModuleId) => ReturnType<typeof moduleAvailability>;
   sees: (m: ModuleId, ownerId?: string) => boolean;
   /** registra no histórico/auditoria e devolve o id do evento */
-  log: (e: { module: ModuleId; recordId: string; recordLabel: string; action: string; kind?: AuditKind; companyId?: BrandId }) => string;
+  log: (e: { module: ModuleId; recordId: string; recordLabel: string; action: string; kind?: AuditKind; companyId?: BrandId; actorId?: string }) => string;
   /** notificação interna + e-mail (canais definidos) */
   notify: (n: Omit<Notification, 'id' | 'ts' | 'read'>, opts?: { email?: boolean }) => void;
   markRead: (ids: string[]) => void;
-  /** fonte ou módulo indisponível (simulado pelo apresentador) */
-  down: (id: SourceId | ModuleId) => boolean;
+  /** a plataforma sabe que a fonte/sistema está indisponível (ou verificando) */
+  down: (id: HealthId) => boolean;
+  health: Partial<Record<HealthId, Health>>;
+  /** nova tentativa de conexão (manual) */
+  checkNow: (id: HealthId) => void;
+  setAutoRetry: (id: HealthId, on: boolean) => void;
+  /** chamada ao sistema de origem (lança OpError quando não responde) */
+  call: (id: HealthId) => void;
+  validations: Partial<Record<IntegrationId, Validation>>;
+  validate: (id: IntegrationId) => Promise<Validation>;
   isLeader: boolean;
   /** contexto para contribuições dos plugins */
   contrib: ContribCtx | null;
@@ -65,12 +92,22 @@ interface Ctx {
 
 const DemoCtx = createContext<Ctx | null>(null);
 
+/** Sessão vigente, legível fora do ciclo de renderização (ex.: ao desmontar uma tela com operação pendente). */
+let liveSession: Session = defaultSession;
+export const getLiveSession = () => liveSession;
+
 export function DemoProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<DemoData>(() => load<DemoData>(DATA_KEY) ?? seedData());
   const [session, setSessionState] = useState<Session>(() => ({ ...defaultSession, ...load<Session>(SESSION_KEY), sim: 'normal' }));
   const [dirty, setDirty] = useState(false);
   const sessionRef = useRef(session);
   sessionRef.current = session;
+  liveSession = session;
+  const [health, setHealth] = useState<Partial<Record<HealthId, Health>>>(() =>
+    Object.fromEntries(Object.entries(session.outages ?? {}).filter(([, v]) => v).map(([k]) => [k, { status: 'down', since: new Date().toISOString(), attempts: 0, auto: true, nextAt: Date.now() + RETRY_DELAYS[0] }])));
+  const healthRef = useRef(health);
+  healthRef.current = health;
+  const [validations, setValidations] = useState<Partial<Record<IntegrationId, Validation>>>({});
 
   useEffect(() => save(DATA_KEY, data), [data]);
   useEffect(() => save(SESSION_KEY, session), [session]);
@@ -83,10 +120,9 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     el.style.colorScheme = session.theme;
     if (session.reduceTransparency) el.dataset.transparency = 'reduced'; else delete el.dataset.transparency;
     if (session.reduceMotion) el.dataset.motion = 'reduced'; else delete el.dataset.motion;
-    for (const k of ['sharepoint', 'feedback', 'teams', 'chamados', 'email']) { if (session.outages?.[k as SourceId]) el.dataset[`down${k}`] = '1'; else delete el.dataset[`down${k}`]; }
     const meta = document.querySelector('meta[name="theme-color"]') ?? Object.assign(document.head.appendChild(document.createElement('meta')), { name: 'theme-color' });
     meta.setAttribute('content', getComputedStyle(el).getPropertyValue('--amb-base').trim() || '#ffffff');
-  }, [session.companyId, session.theme, session.reduceTransparency, session.reduceMotion, session.outages]);
+  }, [session.companyId, session.theme, session.reduceTransparency, session.reduceMotion]);
 
   const update = useCallback((fn: (d: DemoData) => void) => {
     setData((prev) => {
@@ -96,6 +132,53 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     });
   }, []);
   const setSession = useCallback((patch: Partial<Session>) => setSessionState((s) => ({ ...s, ...patch })), []);
+
+  // ---------- disponibilidade ----------
+  const reportFailure = useCallback((id: HealthId) => {
+    setHealth((h) => {
+      const cur = h[id];
+      if (!cur || cur.status === 'ok') return { ...h, [id]: { status: 'down', since: new Date().toISOString(), attempts: 0, auto: true, nextAt: Date.now() + delayFor(0), lastCheck: new Date().toISOString() } };
+      const attempts = cur.attempts + 1;
+      return { ...h, [id]: { ...cur, status: 'down', attempts, lastCheck: new Date().toISOString(), nextAt: cur.auto ? Date.now() + delayFor(attempts) : undefined } };
+    });
+  }, []);
+  const reportSuccess = useCallback((id: HealthId) => {
+    const cur = healthRef.current[id];
+    if (!cur || cur.status === 'ok') return;
+    const now = new Date().toISOString();
+    healthRef.current = { ...healthRef.current, [id]: { status: 'ok', attempts: 0, auto: true, restoredAt: Date.now(), lastCheck: now } };
+    setHealth(healthRef.current);
+    // conteúdo atualizado na reconexão
+    setData((d) => ({ ...d, sync: { ...d.sync, [id]: now } }));
+  }, []);
+  const checkNow = useCallback((id: HealthId) => {
+    setHealth((h) => (h[id] && h[id]!.status !== 'ok' ? { ...h, [id]: { ...h[id]!, status: 'checking', nextAt: undefined } } : h));
+    setTimeout(() => (sessionRef.current.outages?.[id] ? reportFailure(id) : reportSuccess(id)), CHECK_LATENCY);
+  }, [reportFailure, reportSuccess]);
+  const setAutoRetry = useCallback((id: HealthId, on: boolean) => {
+    setHealth((h) => (h[id] ? { ...h, [id]: { ...h[id]!, auto: on, nextAt: on && h[id]!.status === 'down' ? Date.now() + delayFor(h[id]!.attempts) : undefined } } : h));
+  }, []);
+  // queda detectada na próxima consulta à fonte
+  useEffect(() => {
+    for (const [k, v] of Object.entries(session.outages ?? {})) if (v && (!health[k as HealthId] || health[k as HealthId]!.status === 'ok')) reportFailure(k as HealthId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.outages]);
+  // agenda a próxima tentativa automática (a mais próxima entre as fontes)
+  useEffect(() => {
+    const due = Object.entries(health).filter(([, h]) => h?.status === 'down' && h.auto && h.nextAt).sort((a, b) => a[1]!.nextAt! - b[1]!.nextAt!)[0];
+    if (!due) return;
+    const t = setTimeout(() => checkNow(due[0] as HealthId), Math.max(0, due[1]!.nextAt! - Date.now()));
+    return () => clearTimeout(t);
+  }, [health, checkNow]);
+  const call = useCallback((id: HealthId) => {
+    if (sessionRef.current.outages?.[id]) { reportFailure(id); throw new OpError('indisponivel', `${healthLabel(id)} não respondeu. Nada foi alterado e seu texto foi mantido.`); }
+    reportSuccess(id);
+  }, [reportFailure, reportSuccess]);
+  const validate = useCallback(async (id: IntegrationId) => {
+    const v = await validateIntegration(id);
+    setValidations((x) => ({ ...x, [id]: v }));
+    return v;
+  }, []);
 
   const me = data.users.find((u) => u.id === session.userId);
   const company = session.companyId;
@@ -114,7 +197,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       log: (e) => {
         const id = uid('ev');
         update((d) => {
-          d.events.push({ id, ts: new Date().toISOString(), companyId: e.companyId ?? sessionRef.current.companyId, actorId: sessionRef.current.userId ?? '', module: e.module, recordId: e.recordId, recordLabel: e.recordLabel, action: e.action, kind: e.kind });
+          d.events.push({ id, ts: new Date().toISOString(), companyId: e.companyId ?? sessionRef.current.companyId, actorId: e.actorId ?? sessionRef.current.userId ?? '', module: e.module, recordId: e.recordId, recordLabel: e.recordLabel, action: e.action, kind: e.kind });
         });
         return id;
       },
@@ -127,7 +210,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
             const u = d.users.find((x) => x.id === n.userId);
             if (u) {
               const mail: EmailMessage = {
-                id: uid('em'), ts, toUserId: u.id, to: u.email, subject: `[${ORIGIN_NAME[n.module] ?? n.module}] ${n.title} · ${n.subject}`,
+                id: uid('em'), ts, toUserId: u.id, to: u.email, subject: `[${originMeta(n.module).name}] ${n.title} · ${n.subject}`,
                 body: `Olá, ${u.name.split(' ')[0]}.\n\n${n.title}: ${n.subject}.\n\nAbrir na Plataforma AZIME: ${n.link}\n\nMensagem automática · não responda.`,
                 module: n.module, recordId: n.recordId, link: n.link, notificationId: id, companyId: n.companyId ?? sessionRef.current.companyId,
               };
@@ -149,27 +232,31 @@ export function DemoProvider({ children }: { children: ReactNode }) {
           d.recent[uidv] = list.slice(0, 8);
         }),
       userName: (id) => data.users.find((u) => u.id === id)?.name ?? '—',
-      down: (id) => !!session.outages?.[id],
+      down: (id) => !!health[id] && health[id]!.status !== 'ok',
+      health, checkNow, setAutoRetry, call, validations, validate,
       isLeader: isLeader(data, me),
       contrib: null,
       api: null,
       reset: () => {
         setData(seedData());
-        setSessionState((s) => ({ ...s, sim: 'normal' }));
+        setHealth({});
+        setSessionState((s) => ({ ...s, sim: 'normal', outages: {} }));
       },
     };
-  }, [data, session, me, company, update, setSession, dirty]);
+  }, [data, session, me, company, update, setSession, dirty, health, checkNow, setAutoRetry, call, validations, validate]);
 
   const full = useMemo<Ctx>(() => {
     if (!me) return value;
     const contrib: ContribCtx = {
       data, me, company, can: value.can, scope: (m) => value.grant(m)?.scope ?? null, userName: value.userName,
-      isLeader: value.isLeader,
+      isLeader: value.isLeader, sees: value.sees,
     };
-    const api: PlatformApi = { ctx: contrib, update, log: value.log, notify: value.notify, down: value.down };
+    const api: PlatformApi = { ctx: contrib, update, log: value.log, notify: value.notify, call: value.call };
     return { ...value, contrib, api };
   }, [value, data, me, company, update]);
 
+  // gancho de testes automatizados (somente em desenvolvimento)
+  if (import.meta.env.DEV) (window as unknown as { __azimeDemo?: unknown }).__azimeDemo = { setSession, update, data, session, health };
   return <DemoCtx.Provider value={full}>{children}</DemoCtx.Provider>;
 }
 

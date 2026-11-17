@@ -171,40 +171,10 @@ export interface EmailMessage {
   companyId?: BrandId;
 }
 
-// ---------- Chamados e Acompanhamento (plugin demonstrativo) ----------
-export type Priority = 'baixa' | 'media' | 'alta' | 'urgente';
-export type ChamadoStatus = 'aberto' | 'em_atendimento' | 'aguardando_solicitante' | 'resolvido' | 'fechado';
-export type TarefaStatus = 'a_fazer' | 'em_andamento' | 'em_revisao' | 'concluida';
-export interface Chamado {
-  id: string;
-  numero: string;
-  companyId: BrandId;
-  titulo: string;
-  descricao: string;
-  categoria: string;
-  fila: string;
-  solicitanteId: string;
-  responsavelId: string;
-  status: ChamadoStatus;
-  prioridade: Priority;
-  criadoEm: string;
-  prazo?: string;
-  atualizadoEm: string;
-}
-export interface Tarefa {
-  id: string;
-  codigo: string;
-  chamadoId: string;
-  companyId: BrandId;
-  titulo: string;
-  descricao: string;
-  responsavelId: string;
-  revisorId: string;
-  status: TarefaStatus;
-  prioridade?: Priority;
-  prazo?: string;
-  atualizadoEm: string;
-}
+// ---------- Prioridade normalizada (cada plugin mapeia a sua escala para esta) ----------
+/** rank 0 = mais urgente. O núcleo só ordena e exibe; o significado pertence ao plugin. */
+export interface PriorityTag { label: string; rank: number; tone: 'danger' | 'warn' | 'neutral' }
+
 export interface Comment { id: string; module: ModuleId; recordId: string; authorId: string; ts: string; text: string; via?: 'plataforma' | 'painel' | 'sistema' }
 
 // ---------- Fontes externas (dados demonstrativos dos adaptadores) ----------
@@ -239,6 +209,10 @@ export interface TeamsMessage {
   url?: string; // deep link real do Teams (somente quando configurado)
 }
 export type SourceStatus = 'ok' | 'indisponivel';
+/** Serviços da própria plataforma que também podem falhar (ex.: geração de arquivos). */
+export type ServiceId = 'arquivos';
+/** Tudo que tem disponibilidade monitorada: fontes externas, plugins com sistema de origem e serviços. */
+export type HealthId = SourceId | ModuleId | ServiceId;
 
 export type PluginStatus = 'disponivel' | 'instalado' | 'desativado';
 export interface PluginState {
@@ -268,31 +242,54 @@ export interface AccessRequest {
   obs?: string;
 }
 
+export type ExportFormat = 'CSV' | 'XLSX' | 'PDF';
 export interface ExportConfig {
+  /** incrementa a cada alteração da regra (permite saber se mudou depois de uma aprovação) */
+  versao?: number;
+  atualizadoEm?: string;
+  atualizadoPor?: string;
   enabled: boolean;
-  formats: ('CSV' | 'XLSX' | 'PDF')[];
+  formats: ExportFormat[];
   /** permanente: cargos autorizados exportam direto · aprovacao: cargos solicitam e a Gerência decide */
   mode: 'permanente' | 'aprovacao';
   roles: RoleId[];
   fields: string[];
   includeHistory: boolean;
 }
+/** Conteúdo EXATO de uma exportação: o que foi pedido é o que é aprovado e o que é gerado. */
+export interface ExportContent {
+  companyId: BrandId;
+  module: ModuleId;
+  recordIds: string[];
+  recordLabels: string[];
+  fields: { key: string; label: string }[];
+  formato: ExportFormat;
+  includeHistory: boolean;
+  filtros: string;
+}
+export type ExportResult = 'gerado' | 'simulado' | 'falha' | 'bloqueado';
+export interface ExportAttempt { ts: string; by: string; result: ExportResult; detail: string; bytes?: number; hash?: string }
 export interface ExportRequest {
   id: string;
   numero: string;
   module: ModuleId;
   companyId: BrandId;
   requesterId: string;
-  formato: 'CSV' | 'XLSX' | 'PDF';
-  registros: number;
-  filtros: string;
-  recordIds: string[];
+  content: ExportContent;
+  /** impressão digital do conteúdo pedido (comparada na aprovação e no download) */
+  hash: string;
+  /** regra vigente no momento do pedido */
+  regra: { mode: ExportConfig['mode']; versao: number };
   justificativa: string;
-  status: 'pendente' | 'aprovada' | 'recusada' | 'baixada';
+  /** aprovada → gerada (arquivo real) ou simulada (formato sem gerador nesta versão) */
+  status: 'pendente' | 'aprovada' | 'recusada' | 'gerada' | 'simulada';
   criadoEm: string;
   decididoPor?: string;
   decididoEm?: string;
+  /** conteúdo autorizado (cópia do pedido no momento da decisão) */
+  aprovado?: { hash: string; regraVersao: number };
   obs?: string;
+  tentativas?: ExportAttempt[];
 }
 
 export interface RecentItem { module: ModuleId; recordId: string; label: string; action: string; ts: string; link: string; companyId: BrandId }
@@ -306,15 +303,15 @@ export interface DemoData {
   viagens: Viagem[];
   salas: Sala[];
   reservas: Reserva[];
-  chamados: Chamado[];
-  tarefas: Tarefa[];
+  /** dados próprios de cada plugin (o núcleo não conhece a estrutura) */
+  ext: Partial<Record<ModuleId, unknown>>;
   comments: Comment[];
   posts: IntranetPost[];
   feedback: FeedbackItem[];
   teams: TeamsMessage[];
   emails: EmailMessage[];
   /** última sincronização bem-sucedida de cada fonte (conteúdo em cache) */
-  sync: Partial<Record<SourceId | ModuleId, string>>;
+  sync: Partial<Record<HealthId, string>>;
   attachments: Attachment[];
   events: HistoryEvent[];
   notifications: Notification[];
@@ -338,8 +335,8 @@ export interface Session {
   /** reduz translucidez dos materiais (preferência de acessibilidade) */
   reduceTransparency?: boolean;
   reduceMotion?: boolean;
-  /** fontes/módulos marcados como indisponíveis pelo apresentador */
-  outages?: Partial<Record<SourceId | ModuleId, boolean>>;
+  /** sistemas externos fora do ar (simulado pelo apresentador). A plataforma só "descobre" ao consultar. */
+  outages?: Partial<Record<HealthId, boolean>>;
 }
 
 // ---------- Contrato de módulo / plugin ----------
@@ -359,6 +356,8 @@ export interface ContribCtx {
   scope: (m: ModuleId) => Scope | null;
   userName: (id?: string) => string;
   isLeader: boolean;
+  /** registro de `ownerId` está no escopo do usuário neste módulo? */
+  sees: (m: ModuleId, ownerId?: string) => boolean;
 }
 export type WorkStage = 'acao' | 'andamento' | 'aprovacao' | 'acompanhando' | 'informativo';
 /** Item de trabalho contribuído por um plugin ou fonte ao painel. */
@@ -375,37 +374,66 @@ export interface WorkItem {
   status: string;
   tone: 'ok' | 'warn' | 'danger' | 'info' | 'neutral' | 'accent';
   stage: WorkStage;
-  priority?: Priority;
+  priority?: PriorityTag;
   due?: string;
   dueLabel?: string;
-  action: { label: string; kind: 'painel' | 'abrir' | 'externo'; to: string };
+  /** externo: `to` vazio = sem destino real; `reason` explica (não configurado, registro demonstrativo…) */
+  action: { label: string; kind: 'painel' | 'abrir' | 'externo'; to: string; reason?: string };
 }
 export interface WorkQueue { id: string; origin: OriginId; label: string; to: string; items: WorkItem[] }
 export interface QuickAction { id: string; origin: OriginId; label: string; to: string; icon: LucideIcon; weight: number }
 
 /** Operações que um plugin expõe ao painel de trabalho (comentar e avançar sem sair do Início). */
 export interface TaskView {
-  ref: string; title: string; status: string; tone: WorkItem['tone']; priority?: Priority; due?: string;
+  ref: string; title: string; status: string; tone: WorkItem['tone']; priority?: PriorityTag; due?: string;
   facts: [string, string][]; description: string; openTo: string; companyId: BrandId;
+  /** aviso do plugin sobre o registro (ex.: decisão que só acontece no módulo) */
+  notice?: { tone: 'warn' | 'info'; text: string; action?: { label: string; to: string } };
 }
 export interface Transition { id: string; label: string; needsComment?: boolean; primary?: boolean; hint?: string }
+
+/** Motivos de falha de uma operação. `indisponivel` admite nova tentativa; os demais exigem outra ação. */
+export type OpFailure = 'indisponivel' | 'permissao' | 'situacao' | 'registro' | 'modulo' | 'contexto' | 'validacao';
+export class OpError extends Error {
+  constructor(public code: OpFailure, message: string) { super(message); }
+  get retryable() { return this.code === 'indisponivel'; }
+}
+export type OpCheck = { ok: true } | { ok: false; code: OpFailure; msg: string };
+
 /** Serviços da plataforma entregues às operações dos plugins (registro, histórico, notificação + e-mail). */
 export interface PlatformApi {
   ctx: ContribCtx;
   update: (fn: (d: DemoData) => void) => void;
-  log: (e: { module: ModuleId; recordId: string; recordLabel: string; action: string; kind?: AuditKind; companyId?: BrandId }) => string;
+  log: (e: { module: ModuleId; recordId: string; recordLabel: string; action: string; kind?: AuditKind; companyId?: BrandId; actorId?: string }) => string;
   notify: (n: Omit<Notification, 'id' | 'ts' | 'read'>, opts?: { email?: boolean }) => void;
-  down: (id: SourceId | ModuleId) => boolean;
+  /** chamada ao sistema de origem: lança OpError('indisponivel') quando ele não responde */
+  call: (id: HealthId) => void;
 }
 export interface TaskOps {
-  supports: (recordId: string) => boolean;
-  comment: (api: PlatformApi, recordId: string, text: string) => void;
-  /** aplica a transição e devolve a mensagem de confirmação */
-  apply: (api: PlatformApi, recordId: string, transitionId: string, comment?: string) => string;
+  /** null = registro inexistente, de outro plugin ou fora do alcance da pessoa */
   view: (c: ContribCtx, recordId: string) => TaskView | null;
   comments: (c: ContribCtx, recordId: string) => Comment[];
+  /** transições válidas para a situação ATUAL e a permissão ATUAL */
   transitions: (c: ContribCtx, recordId: string) => Transition[];
+  /** pode comentar agora? */
+  canComment: (c: ContribCtx, recordId: string) => OpCheck;
+  /** por que uma transição não vale mais (situação mudou, permissão retirada…) */
+  checkTransition: (c: ContribCtx, recordId: string, transitionId: string) => OpCheck;
+  comment: (api: PlatformApi, recordId: string, text: string) => string;
+  /** aplica a transição e devolve a mensagem de confirmação */
+  apply: (api: PlatformApi, recordId: string, transitionId: string, comment?: string) => string;
 }
+
+/** Recursos de exportação fornecidos pelo plugin. O núcleo aplica a regra da Gerência e gera o arquivo. */
+export interface ExportProvider {
+  label: string;
+  fields: { key: string; label: string }[];
+  /** linhas que a pessoa do contexto pode ver; com `ids`, apenas esses registros */
+  rows: (c: ContribCtx, ids?: string[]) => { id: string; label: string; values: Record<string, string> }[];
+  /** histórico resumido do registro (quando a regra inclui histórico) */
+  history?: (c: ContribCtx, id: string) => string;
+}
+export interface SearchHit { title: string; sub: string; to: string }
 
 export interface ModuleManifest {
   id: ModuleId;
@@ -422,12 +450,18 @@ export interface ModuleManifest {
   /** módulo de negócio (líderes recebem acesso total) */
   business?: boolean;
   routes: { path: string; element: ComponentType }[];
+  /** sistema de origem do plugin (quando incorpora um sistema existente) e integração usada */
+  origin?: { system: string; integration?: string; outageNote?: string };
+  /** dados próprios do plugin (estado inicial da demonstração) */
+  data?: { seed: () => unknown };
   /** participação no painel pessoal e na navegação */
   contributes?: {
     queues?: (c: ContribCtx) => WorkQueue[];
     quickActions?: (c: ContribCtx) => QuickAction[];
     /** destino de navegação de um registro (notificações, recentes, busca) */
-    recordPath?: (recordId: string) => string;
+    recordPath?: (recordId: string, c?: Pick<ContribCtx, 'data'>) => string;
     taskOps?: TaskOps;
+    search?: (c: ContribCtx, term: string) => SearchHit[];
+    exports?: ExportProvider;
   };
 }

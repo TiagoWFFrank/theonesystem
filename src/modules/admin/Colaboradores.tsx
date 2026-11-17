@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ChevronRight, Lock, Search, ShieldCheck, Unlock, UserCheck, UserPlus, X } from 'lucide-react';
 import { useDemo } from '@/platform/store';
 import { useUrlState } from '@/platform/hooks';
-import { BUSINESS_ACTIONS, effectiveGrant, isLeader, moduleAvailability, ROLE_LABEL, ROLES, SCOPE_LABEL } from '@/platform/permissions';
+import { businessActions, effectiveGrant, isLeader, moduleAvailability, ROLE_LABEL, ROLES, SCOPE_LABEL } from '@/platform/permissions';
 import { Avatar, BackToList, Badge, Confirm, EmptyState, ErrorState, KV, NoResults, PageHeader, SkeletonRows, useSimLoad, type Tone } from '@/ui/core';
 import { COMPANIES } from '@/ui/brand';
 import { Timeline } from '@/ui/records';
@@ -178,7 +178,7 @@ export function ColaboradorDetail() {
                         {catalog.filter((m) => m.id === 'admin' || moduleAvailability(data, b, m.id) !== 'nao_instalado').map((m) => {
                           const preview: User = { ...u, roles: r, companies: c, grants: g, status: 'ativo' };
                           const eff = effectiveGrant(data, preview, b, m.id);
-                          const fromLeader = leader && !!BUSINESS_ACTIONS[m.id];
+                          const fromLeader = leader && !!businessActions(m.id);
                           const gr = g[b]?.[m.id];
                           return (
                             <tr key={m.id} style={{ cursor: 'default', opacity: eff || editable ? 1 : .55 }}>

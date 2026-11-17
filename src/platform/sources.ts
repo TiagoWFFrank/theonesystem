@@ -1,5 +1,5 @@
 // Adaptadores das fontes externas (SIMULADOS). Mesma forma de contribuição dos plugins.
-import { integration } from './integrations';
+import { recordDestination, systemDestination } from './integrations';
 import type { BrandId, ContribCtx, DemoData, IntranetPost, Reach, SourceId, TeamsMessage, User, WorkQueue } from './types';
 
 /** Conteúdo compartilhado com alcance explícito: grupo inteiro ou ambientes específicos. */
@@ -13,6 +13,14 @@ export interface SourceAdapter {
   recordPath?: (id: string) => string;
 }
 
+/** Destino do item de Feedback: endereço do item (origem) ou página inicial configurada do sistema. */
+function feedbackAction(url?: string) {
+  const rec = recordDestination('feedback', url, 'Abrir no Feedback');
+  if (rec.href) return { label: rec.label, kind: 'externo' as const, to: rec.href };
+  const sys = systemDestination('feedback', 'Abrir o Feedback');
+  return { label: sys.label, kind: 'externo' as const, to: sys.href ?? '', reason: sys.href ? undefined : `${rec.reason}; ${sys.reason}` };
+}
+
 export const SOURCE_ADAPTERS: SourceAdapter[] = [
   {
     id: 'feedback', name: 'Feedback',
@@ -21,7 +29,7 @@ export const SOURCE_ADAPTERS: SourceAdapter[] = [
       items: c.data.feedback.filter((f) => f.userId === c.me.id && f.status === 'pendente' && inReach(f.alcance, c.company, c.me)).map((f) => ({
         key: `feedback:${f.id}`, origin: 'feedback', recordId: f.id, userId: c.me.id, relation: 'destinatario' as const, ref: f.ciclo.replace('Ciclo anual ', 'CICLO '),
         title: f.titulo, subject: `${f.ciclo} · sistema de Feedback`, status: 'Pendente', tone: 'warn' as const, stage: 'acao' as const, due: f.prazo,
-        action: { label: 'Abrir no Feedback', kind: 'externo' as const, to: f.url ?? integration('feedback').endpoint ?? '' },
+        action: feedbackAction(f.url),
       })),
     }],
   },

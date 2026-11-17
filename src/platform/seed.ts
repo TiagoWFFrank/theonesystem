@@ -1,6 +1,9 @@
 // Cenário de demonstração. Todos os nomes, clientes, valores e documentos são fictícios.
-import { seedChamados, seedComments, seedEmails, seedFeedback, seedPosts, seedTarefas, seedTeams } from './seed03';
+import { seedComments, seedEmails, seedFeedback, seedPosts, seedTeams } from './seed03';
+import { hashContent } from './exports';
+import { PLUGIN_SEEDS } from '@/modules/seeds';
 import type {
+  ExportContent, ExportRequest,
   Attachment, BrandId, DemoData, Equipment, Grant, HistoryEvent, ModuleId, Notification,
   PermissionMatrix, RoleId, Reverso, Viagem, User,
 } from './types';
@@ -237,6 +240,22 @@ function materializeGrants(users: User[], templates: PermissionMatrix): User[] {
   });
 }
 
+/** Exportação já concluída no histórico da demonstração (conteúdo exato, aprovação e arquivo gerado). */
+function exp6(): ExportRequest {
+  const content: ExportContent = {
+    companyId: 'alinare', module: 'reverso', recordIds: ['r1', 'r2', 'r3', 'r4', 'r5'],
+    recordLabels: ['REV-2026-0148', 'REV-2026-0145', 'REV-2026-0139', 'REV-2026-0151', 'REV-2026-0131'],
+    fields: [{ key: 'numero', label: 'Número' }, { key: 'motivo', label: 'Motivo' }, { key: 'cliente', label: 'Cliente' }, { key: 'situacao', label: 'Situação' }, { key: 'abertura', label: 'Abertura' }],
+    formato: 'CSV', includeHistory: true, filtros: 'Todas as situações',
+  };
+  const hash = hashContent(content);
+  return {
+    id: 'x1', numero: 'EXP-0006', module: 'reverso', companyId: 'alinare', requesterId: 'u4', content, hash, regra: { mode: 'aprovacao', versao: 1 },
+    justificativa: 'Fechamento mensal da expedição.', status: 'gerada', criadoEm: rel(-3, 14), decididoPor: 'u6', decididoEm: rel(-2, 14), aprovado: { hash, regraVersao: 1 },
+    tentativas: [{ ts: rel(-2, 15), by: 'u4', result: 'gerado', detail: 'CSV com 5 registros e 6 colunas', bytes: 1480, hash }],
+  };
+}
+
 export function seedData(): DemoData {
   evc = 0; nc = 0;
   const templates = seedPermissions();
@@ -244,8 +263,7 @@ export function seedData(): DemoData {
   return {
     users: materializeGrants(structuredClone(seedUsers), templates),
     config: { leaders: ['u2'] },
-    chamados: seedChamados(),
-    tarefas: seedTarefas(),
+    ext: Object.fromEntries(Object.entries(PLUGIN_SEEDS).map(([k, f]) => [k, f!()])),
     comments: seedComments(),
     posts: seedPosts(),
     feedback: seedFeedback(),
@@ -253,7 +271,7 @@ export function seedData(): DemoData {
     emails: seedEmails(),
     sync: { sharepoint: new Date(now - 18 * 60000).toISOString(), feedback: new Date(now - 18 * 60000).toISOString(), teams: new Date(now - 2 * 60000).toISOString(), chamados: new Date(now - 60000).toISOString() },
     exportRequests: [
-      { id: 'x1', numero: 'EXP-0006', module: 'reverso', companyId: 'alinare', requesterId: 'u4', formato: 'CSV', registros: 5, filtros: 'Todas as situações', recordIds: ['r1', 'r2', 'r3', 'r4', 'r5'], justificativa: 'Fechamento mensal da expedição.', status: 'baixada', criadoEm: rel(-3, 14), decididoPor: 'u6', decididoEm: rel(-2, 14) },
+      exp6(),
     ],
     equipments: structuredClone(seedEquipments),
     reversos: structuredClone(seedReversos),
@@ -291,9 +309,10 @@ export function seedData(): DemoData {
       { id: 'ar2', numero: 'ACS-0014', requesterId: 'u2', targetId: 'u1', companyId: 'alinare', module: 'reverso', actions: ['ver', 'abrir', 'aprovar'], scope: 'equipe', justificativa: 'Ana cobrirá as aprovações de reverso da equipe durante as férias do líder (01 a 15/12).', status: 'pendente', criadoEm: rel(-1, 17) },
     ],
     exportConfig: {
-      inventario: { enabled: true, mode: 'permanente', formats: ['CSV', 'XLSX'], roles: ['ti', 'gerencia'], fields: ['patrimonio', 'descricao', 'tipo', 'responsavel', 'localizacao', 'situacao', 'ultimaMov'], includeHistory: false },
-      reverso: { enabled: true, mode: 'aprovacao', formats: ['CSV'], roles: ['expedicao', 'gestor'], fields: ['numero', 'motivo', 'cliente', 'situacao', 'abertura'], includeHistory: true },
-      viagens: { enabled: false, mode: 'aprovacao', formats: ['CSV'], roles: ['compras'], fields: ['codigo', 'viajante', 'destino', 'periodo', 'situacao'], includeHistory: false },
+      inventario: { versao: 1, enabled: true, mode: 'permanente', formats: ['CSV', 'XLSX'], roles: ['ti', 'gerencia'], fields: ['patrimonio', 'descricao', 'tipo', 'responsavel', 'localizacao', 'situacao', 'ultimaMov'], includeHistory: false },
+      reverso: { versao: 1, enabled: true, mode: 'aprovacao', formats: ['CSV', 'XLSX'], roles: ['expedicao', 'gestor'], fields: ['numero', 'motivo', 'cliente', 'situacao', 'abertura'], includeHistory: true },
+      viagens: { versao: 1, enabled: false, mode: 'aprovacao', formats: ['CSV'], roles: ['compras'], fields: ['codigo', 'viajante', 'destino', 'periodo', 'situacao'], includeHistory: false },
+      chamados: { versao: 1, enabled: true, mode: 'permanente', formats: ['CSV'], roles: ['ti', 'gerencia'], fields: ['numero', 'assunto', 'solicitante', 'responsavel', 'prioridade', 'situacao', 'prazo'], includeHistory: false },
     },
     recent: {},
   };

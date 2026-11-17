@@ -2,9 +2,9 @@
 // (filas de trabalho, ações rápidas, destinos de navegação) e das fontes externas (adaptadores).
 // As filas usam as mesmas regras dos filtros das listas de destino: a contagem é igual às linhas.
 import { ALL_MODULES } from '@/layout/modules';
-import { effectiveGrant, isLeader, moduleAvailability } from './permissions';
+import { effectiveGrant, inScope, isLeader, moduleAvailability } from './permissions';
 import { SOURCE_ADAPTERS } from './sources';
-import type { BrandId, ContribCtx, DemoData, ModuleId, OriginId, QuickAction, User, WorkQueue, WorkStage } from './types';
+import type { BrandId, ContribCtx, DemoData, ModuleId, OriginId, QuickAction, User, WorkItem, WorkQueue, WorkStage } from './types';
 
 export function makeCtx(data: DemoData, me: User, company: BrandId): ContribCtx {
   const grant = (m: ModuleId) => (moduleAvailability(data, company, m) === 'ok' ? effectiveGrant(data, me, company, m) : null);
@@ -14,6 +14,7 @@ export function makeCtx(data: DemoData, me: User, company: BrandId): ContribCtx 
     scope: (m) => grant(m)?.scope ?? null,
     userName: (id) => data.users.find((u) => u.id === id)?.name ?? '—',
     isLeader: isLeader(data, me),
+    sees: (m, ownerId) => { const g = grant(m); return !!g && inScope(g.scope, me, ownerId, data.users); },
   };
 }
 
@@ -46,15 +47,22 @@ export function collectQuickActions(data: DemoData, me: User | undefined, compan
 }
 
 /** Destino de navegação de um registro, declarado pelo plugin. */
-export function recordPath(origin: OriginId, recordId: string): string {
+export function recordPath(origin: OriginId, recordId: string, data?: DemoData): string {
   const m = ALL_MODULES.find((x) => x.id === origin);
-  return m?.contributes?.recordPath?.(recordId) ?? SOURCE_ADAPTERS.find((s) => s.id === origin)?.recordPath?.(recordId) ?? '/inicio';
+  return m?.contributes?.recordPath?.(recordId, data ? { data } : undefined) ?? SOURCE_ADAPTERS.find((s) => s.id === origin)?.recordPath?.(recordId) ?? '/inicio';
 }
 
-export function taskOpsFor(origin: OriginId, recordId: string) {
-  const m = ALL_MODULES.find((x) => x.id === origin);
-  return m?.contributes?.taskOps?.supports(recordId) ? m.contributes.taskOps : undefined;
+/** Operações de painel declaradas pelo plugin de origem (se houver). */
+export function taskOpsFor(origin: OriginId) {
+  return ALL_MODULES.find((x) => x.id === origin)?.contributes?.taskOps;
 }
+
+/** Ordenação comum: decisões, ações, andamento; depois prioridade normalizada e prazo. */
+export const STAGE_ORDER: WorkStage[] = ['aprovacao', 'acao', 'andamento', 'acompanhando', 'informativo'];
+export const sortWork = (a: WorkItem, b: WorkItem) =>
+  STAGE_ORDER.indexOf(a.stage) - STAGE_ORDER.indexOf(b.stage)
+  || (a.priority?.rank ?? 9) - (b.priority?.rank ?? 9)
+  || (a.due ?? '9').localeCompare(b.due ?? '9');
 
 export const STAGE_LABEL: Record<WorkStage, string> = {
   acao: 'Precisa de você', andamento: 'Em andamento', aprovacao: 'Aprovações', acompanhando: 'Acompanhando', informativo: 'Para consultar',
@@ -69,10 +77,17 @@ function coreQueues(c: ContribCtx): WorkQueue[] {
     id: 'exp-minhas', origin: 'admin', label: 'Minhas exportações', to: mine[0] ? `/exportacoes/${mine[0].id}` : '/inicio',
     items: mine.map((x) => ({
       key: `core:exp:${x.id}`, origin: x.module, companyId: x.companyId, recordId: x.id, userId: c.me.id, relation: 'solicitante' as const,
-      ref: x.numero, title: x.status === 'aprovada' ? 'Exportação aprovada: baixar arquivo' : 'Exportação aguardando a Gerência', subject: `${x.registros} registros · ${x.formato}`,
+      ref: x.numero, title: x.status === 'aprovada' ? 'Exportação aprovada: baixar arquivo' : 'Exportação aguardando a Gerência', subject: `${x.content.recordIds.length} registros · ${x.content.fields.length} campos · ${x.content.formato}`,
       status: x.status === 'aprovada' ? 'Aprovada' : 'Aguardando Gerência', tone: x.status === 'aprovada' ? 'ok' as const : 'neutral' as const,
       stage: x.status === 'aprovada' ? 'acao' as const : 'acompanhando' as const,
       action: { label: x.status === 'aprovada' ? 'Baixar' : 'Acompanhar', kind: 'abrir' as const, to: `/exportacoes/${x.id}` },
     })),
   }];
+}
+
+/** Origens que contribuem para o painel da pessoa no ambiente (para avisos de disponibilidade). */
+export function contributingOrigins(data: DemoData, me: User | undefined, company: BrandId): OriginId[] {
+  if (!me) return [];
+  const mods = ALL_MODULES.filter((m) => m.contributes?.queues && moduleAvailability(data, company, m.id) === 'ok' && effectiveGrant(data, me, company, m.id)).map((m) => m.id as OriginId);
+  return [...mods, ...SOURCE_ADAPTERS.filter((s) => s.queues).map((s) => s.id as OriginId)];
 }
