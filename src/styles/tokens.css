@@ -1,0 +1,172 @@
+/* =====================================================================
+   TOKENS — Plataforma AZIME
+   Três camadas:  1) ambiente (fundo de luz e cor da marca)
+                  2) materiais de vidro (navegação, menus, diálogos, busca)
+                  3) superfícies de conteúdo (cards, tabelas, formulários)
+   A marca ativa (data-brand) troca os tokens; o usuário escolhe claro/escuro (data-theme).
+   Valores complementares são PROPOSTAS a validar com os arquivos oficiais de cada marca.
+   ===================================================================== */
+
+:root {
+  --font: 'Instrument Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Instrument Serif', Georgia, serif;
+
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 20px; --s6: 24px; --s8: 32px; --s10: 40px; --s12: 48px;
+  --r-field: 12px; --r-card: 18px; --r-dialog: 26px; --r-nav: 26px; --r-pill: 999px;
+  --control-h: 44px;
+  --gap-frame: 12px;            /* respiro externo entre vidro e borda da janela */
+  --sidebar-w: 264px; --sidebar-w-collapsed: 80px; --header-h: 64px;
+
+  --dur-fast: 140ms; --dur: 200ms; --dur-slow: 420ms;
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  --ease-spring: cubic-bezier(.34, 1.36, .64, 1);
+
+  /* materiais (sobrescritos por marca/tema) */
+  --glass-blur: 22px; --glass-sat: 170%;
+}
+
+/* ---------------------------------------------------------------------
+   AZIME · preto, branco vibrante, grafite e vidro neutro
+   --------------------------------------------------------------------- */
+[data-brand='azime'][data-theme='light'] {
+  --amb-base: #e4e5e8; --amb-1: rgb(255 255 255 / .95); --amb-2: rgb(120 124 136 / .5); --amb-3: rgb(214 216 222 / .95); --amb-4: rgb(40 42 50 / .22);
+  --bg: #e9eaed;
+  --surface: rgb(255 255 255 / .9); --surface-solid: #ffffff; --surface-2: rgb(247 247 249 / .9); --surface-sunken: rgb(20 20 24 / .05);
+  --border: rgb(20 20 24 / .09); --border-strong: rgb(20 20 24 / .18);
+  --text: #0b0b0c; --text-muted: #55575e; --text-subtle: #75777e;
+  --primary: #0b0b0c; --primary-hover: #26272b; --on-primary: #ffffff;
+  --accent: #0b0b0c; --accent-soft: rgb(11 11 12 / .07); --on-accent-soft: #0b0b0c;
+  --glass-bg: rgb(255 255 255 / .55); --glass-bg-strong: rgb(255 255 255 / .78); --glass-field: rgb(255 255 255 / .6);
+  --glass-border: rgb(255 255 255 / .75); --glass-edge: rgb(255 255 255 / .95); --glass-edge-low: rgb(0 0 0 / .04);
+  --glass-sheen: rgb(255 255 255 / .55);
+  --glass-shadow: 0 1px 2px rgb(16 16 20 / .06), 0 12px 32px -10px rgb(16 16 20 / .18);
+  --nav-text: #3c3e45; --nav-muted: #7a7c84; --nav-hover: rgb(255 255 255 / .55);
+  --nav-selected-bg: #0b0b0c; --nav-selected-text: #ffffff; --nav-selected-shadow: 0 6px 16px -6px rgb(0 0 0 / .45);
+  --nav-guide: rgb(11 11 12 / .14); --nav-sub-active: #0b0b0c;
+  --focus: #0b0b0c; --focus-ring: rgb(11 11 12 / .22);
+  --art-bg: #0b0b0c; --art-text: #fafafa; --art-muted: #9a9ca3; --art-accent: #ffffff;
+}
+[data-brand='azime'][data-theme='dark'] {
+  --amb-base: #08080a; --amb-1: rgb(70 72 80 / .55); --amb-2: rgb(38 40 46 / .9); --amb-3: rgb(120 122 132 / .22); --amb-4: rgb(255 255 255 / .05);
+  --bg: #08080a;
+  --surface: rgb(22 23 26 / .88); --surface-solid: #16171a; --surface-2: rgb(30 31 35 / .88); --surface-sunken: rgb(255 255 255 / .05);
+  --border: rgb(255 255 255 / .08); --border-strong: rgb(255 255 255 / .16);
+  --text: #fafafa; --text-muted: #a6a8b0; --text-subtle: #8a8c94;
+  --primary: #fafafa; --primary-hover: #e4e4e7; --on-primary: #0b0b0c;
+  --accent: #fafafa; --accent-soft: rgb(255 255 255 / .08); --on-accent-soft: #fafafa;
+  --glass-bg: rgb(30 31 36 / .5); --glass-bg-strong: rgb(30 31 36 / .78); --glass-field: rgb(255 255 255 / .06);
+  --glass-border: rgb(255 255 255 / .12); --glass-edge: rgb(255 255 255 / .16); --glass-edge-low: rgb(0 0 0 / .3);
+  --glass-sheen: rgb(255 255 255 / .06);
+  --glass-shadow: 0 1px 2px rgb(0 0 0 / .4), 0 16px 40px -12px rgb(0 0 0 / .7);
+  --nav-text: #c9cad0; --nav-muted: #80828a; --nav-hover: rgb(255 255 255 / .06);
+  --nav-selected-bg: #fafafa; --nav-selected-text: #0b0b0c; --nav-selected-shadow: 0 6px 18px -6px rgb(255 255 255 / .25);
+  --nav-guide: rgb(255 255 255 / .14); --nav-sub-active: #fafafa;
+  --focus: #fafafa; --focus-ring: rgb(255 255 255 / .25);
+  --art-bg: #111214; --art-text: #fafafa; --art-muted: #9a9ca3; --art-accent: #ffffff;
+}
+
+/* ---------------------------------------------------------------------
+   Alinare · azul profundo #242741, off-white #F0EBE4, vidro levemente azulado
+   --------------------------------------------------------------------- */
+[data-brand='alinare'][data-theme='light'] {
+  --amb-base: #ebe5dc; --amb-1: rgb(240 235 228 / .95); --amb-2: rgb(36 39 65 / .28); --amb-3: rgb(150 160 214 / .45); --amb-4: rgb(255 255 255 / .8);
+  --bg: #ebe5dc;
+  --surface: rgb(255 255 255 / .88); --surface-solid: #ffffff; --surface-2: rgb(250 247 243 / .9); --surface-sunken: rgb(36 39 65 / .05);
+  --border: rgb(36 39 65 / .1); --border-strong: rgb(36 39 65 / .2);
+  --text: #1b1d31; --text-muted: #555870; --text-subtle: #72748a;
+  --primary: #242741; --primary-hover: #343858; --on-primary: #f0ebe4;
+  --accent: #242741; --accent-soft: rgb(36 39 65 / .08); --on-accent-soft: #242741;
+  --glass-bg: rgb(246 246 252 / .55); --glass-bg-strong: rgb(248 248 253 / .8); --glass-field: rgb(255 255 255 / .6);
+  --glass-border: rgb(255 255 255 / .7); --glass-edge: rgb(255 255 255 / .95); --glass-edge-low: rgb(36 39 65 / .06);
+  --glass-sheen: rgb(255 255 255 / .5);
+  --glass-shadow: 0 1px 2px rgb(36 39 65 / .08), 0 14px 34px -12px rgb(36 39 65 / .28);
+  --nav-text: #33364f; --nav-muted: #7a7c92; --nav-hover: rgb(255 255 255 / .6);
+  --nav-selected-bg: #242741; --nav-selected-text: #f0ebe4; --nav-selected-shadow: 0 8px 18px -8px rgb(36 39 65 / .7);
+  --nav-guide: rgb(36 39 65 / .16); --nav-sub-active: #242741;
+  --focus: #242741; --focus-ring: rgb(36 39 65 / .22);
+  --art-bg: #242741; --art-text: #f0ebe4; --art-muted: #a9a8c0; --art-accent: #aab2e8;
+}
+[data-brand='alinare'][data-theme='dark'] {
+  --amb-base: #0c0e1f; --amb-1: rgb(56 64 140 / .5); --amb-2: rgb(36 39 65 / .95); --amb-3: rgb(120 110 170 / .22); --amb-4: rgb(240 235 228 / .06);
+  --bg: #0c0e1f;
+  --surface: rgb(26 29 54 / .86); --surface-solid: #1a1d36; --surface-2: rgb(33 37 66 / .86); --surface-sunken: rgb(240 235 228 / .05);
+  --border: rgb(240 235 228 / .08); --border-strong: rgb(240 235 228 / .16);
+  --text: #f0ebe4; --text-muted: #aeacc0; --text-subtle: #8f8ea6;
+  --primary: #f0ebe4; --primary-hover: #ffffff; --on-primary: #242741;
+  --accent: #c3c6f2; --accent-soft: rgb(195 198 242 / .1); --on-accent-soft: #e3e4fb;
+  --glass-bg: rgb(36 39 72 / .48); --glass-bg-strong: rgb(32 35 66 / .8); --glass-field: rgb(240 235 228 / .06);
+  --glass-border: rgb(200 205 255 / .14); --glass-edge: rgb(220 224 255 / .18); --glass-edge-low: rgb(0 0 0 / .3);
+  --glass-sheen: rgb(200 205 255 / .06);
+  --glass-shadow: 0 1px 2px rgb(0 0 0 / .4), 0 18px 44px -14px rgb(0 0 10 / .8);
+  --nav-text: #d6d4e4; --nav-muted: #8886a3; --nav-hover: rgb(240 235 228 / .06);
+  --nav-selected-bg: #f0ebe4; --nav-selected-text: #242741; --nav-selected-shadow: 0 8px 20px -8px rgb(240 235 228 / .3);
+  --nav-guide: rgb(240 235 228 / .14); --nav-sub-active: #f0ebe4;
+  --focus: #c3c6f2; --focus-ring: rgb(195 198 242 / .3);
+  --art-bg: #1a1d36; --art-text: #f0ebe4; --art-muted: #a9a8c0; --art-accent: #aab2e8;
+}
+
+/* ---------------------------------------------------------------------
+   Novitah · nude #D6C0B8, terracota #A46F69, areia #D7B79B, cinza #C6C4C7 — vidro quente
+   --------------------------------------------------------------------- */
+[data-brand='novitah'][data-theme='light'] {
+  --amb-base: #f2e8e2; --amb-1: rgb(214 192 184 / .9); --amb-2: rgb(164 111 105 / .32); --amb-3: rgb(215 183 155 / .7); --amb-4: rgb(255 250 246 / .9);
+  --bg: #f2e8e2;
+  --surface: rgb(255 253 251 / .9); --surface-solid: #fffdfb; --surface-2: rgb(252 247 244 / .9); --surface-sunken: rgb(120 70 60 / .05);
+  --border: rgb(120 70 60 / .1); --border-strong: rgb(120 70 60 / .2);
+  --text: #2b1d1a; --text-muted: #6a5a56; --text-subtle: #83716c;
+  --primary: #8f5b55; --primary-hover: #7a4c46; --on-primary: #ffffff;
+  --accent: #a46f69; --accent-soft: rgb(164 111 105 / .1); --on-accent-soft: #7a4842;
+  --glass-bg: rgb(255 248 244 / .55); --glass-bg-strong: rgb(255 249 246 / .8); --glass-field: rgb(255 255 255 / .6);
+  --glass-border: rgb(255 255 255 / .7); --glass-edge: rgb(255 255 255 / .95); --glass-edge-low: rgb(120 70 60 / .06);
+  --glass-sheen: rgb(255 255 255 / .5);
+  --glass-shadow: 0 1px 2px rgb(120 70 60 / .08), 0 14px 34px -12px rgb(120 70 60 / .26);
+  --nav-text: #4e3e3a; --nav-muted: #8d7a75; --nav-hover: rgb(255 255 255 / .6);
+  --nav-selected-bg: #94605a; --nav-selected-text: #ffffff; --nav-selected-shadow: 0 8px 18px -8px rgb(148 96 90 / .7);
+  --nav-guide: rgb(120 70 60 / .16); --nav-sub-active: #8f5b55;
+  --focus: #a46f69; --focus-ring: rgb(164 111 105 / .28);
+  --art-bg: #8f5b55; --art-text: #fbf3ef; --art-muted: #ead7cf; --art-accent: #d6c0b8;
+}
+[data-brand='novitah'][data-theme='dark'] {
+  --amb-base: #130b0c; --amb-1: rgb(110 48 52 / .55); --amb-2: rgb(60 30 28 / .9); --amb-3: rgb(164 111 105 / .22); --amb-4: rgb(214 192 184 / .06);
+  --bg: #130b0c;
+  --surface: rgb(36 24 26 / .88); --surface-solid: #24181a; --surface-2: rgb(44 30 32 / .88); --surface-sunken: rgb(214 192 184 / .05);
+  --border: rgb(214 192 184 / .09); --border-strong: rgb(214 192 184 / .17);
+  --text: #f6eeea; --text-muted: #c4b0aa; --text-subtle: #a58f89;
+  --primary: #d6c0b8; --primary-hover: #e6d5ce; --on-primary: #2b1a1b;
+  --accent: #cf8f86; --accent-soft: rgb(207 143 134 / .12); --on-accent-soft: #f0d2cb;
+  --glass-bg: rgb(52 32 33 / .48); --glass-bg-strong: rgb(46 29 30 / .82); --glass-field: rgb(214 192 184 / .06);
+  --glass-border: rgb(255 220 210 / .12); --glass-edge: rgb(255 225 215 / .16); --glass-edge-low: rgb(0 0 0 / .3);
+  --glass-sheen: rgb(255 220 210 / .05);
+  --glass-shadow: 0 1px 2px rgb(0 0 0 / .4), 0 18px 44px -14px rgb(10 0 0 / .8);
+  --nav-text: #e2d2cd; --nav-muted: #9a8580; --nav-hover: rgb(214 192 184 / .06);
+  --nav-selected-bg: #d6c0b8; --nav-selected-text: #2b1a1b; --nav-selected-shadow: 0 8px 20px -8px rgb(214 192 184 / .3);
+  --nav-guide: rgb(214 192 184 / .14); --nav-sub-active: #d6c0b8;
+  --focus: #d6c0b8; --focus-ring: rgb(214 192 184 / .28);
+  --art-bg: #2c1e20; --art-text: #fbf3ef; --art-muted: #c4b0aa; --art-accent: #e0a89c;
+}
+
+/* ---------- Status operacionais (iguais em todas as marcas; sempre com texto ou ícone) ---------- */
+[data-theme='light'] {
+  --ok: #15703f; --ok-soft: rgb(22 121 74 / .1); --warn: #7d5100; --warn-soft: rgb(196 140 20 / .14);
+  --danger: #b42318; --danger-soft: rgb(180 35 24 / .09); --info: #1f5aa0; --info-soft: rgb(31 95 168 / .09);
+  --neutral: #55575e; --neutral-soft: rgb(85 87 94 / .1);
+  --overlay: rgb(15 15 20 / .28);
+}
+[data-theme='dark'] {
+  --ok: #6fdba5; --ok-soft: rgb(95 211 154 / .13); --warn: #f2c25c; --warn-soft: rgb(242 194 92 / .13);
+  --danger: #ff8f83; --danger-soft: rgb(255 138 125 / .13); --info: #95c3f7; --info-soft: rgb(141 189 245 / .13);
+  --neutral: #b4b6bd; --neutral-soft: rgb(180 182 189 / .12);
+  --overlay: rgb(0 0 0 / .5);
+}
+
+/* ---------- Redução de transparência (preferência do sistema ou do usuário) ---------- */
+[data-transparency='reduced'] {
+  --glass-blur: 0px; --glass-sat: 100%;
+  --glass-bg: var(--surface-solid); --glass-bg-strong: var(--surface-solid); --glass-field: var(--surface-solid);
+  --glass-sheen: transparent;
+  --surface: var(--surface-solid);
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root { --glass-blur: 0px; --glass-sat: 100%; }
+  [data-theme] { --glass-bg: var(--surface-solid); --glass-bg-strong: var(--surface-solid); --glass-field: var(--surface-solid); --glass-sheen: transparent; --surface: var(--surface-solid); }
+}
