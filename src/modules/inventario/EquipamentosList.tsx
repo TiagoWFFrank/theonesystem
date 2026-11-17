@@ -60,12 +60,7 @@ export default function EquipamentosList() {
         title={scope === 'proprios' ? 'Meus equipamentos' : 'Equipamentos'}
         sub={scope === 'proprios' ? 'Equipamentos sob sua responsabilidade.' : 'Patrimônio de TI do ambiente: responsável, localização e situação.'}
         actions={<>
-          <ExportButton module="inventario" rows={sorted} name={`equipamentos-${company}`} columns={[
-            { key: 'patrimonio', label: 'Patrimônio', get: (e) => e.patrimonio }, { key: 'descricao', label: 'Equipamento', get: (e) => e.descricao },
-            { key: 'tipo', label: 'Tipo', get: (e) => e.tipo }, { key: 'responsavel', label: 'Responsável', get: (e) => userName(e.responsavelId) },
-            { key: 'localizacao', label: 'Localização', get: (e) => e.localizacao }, { key: 'situacao', label: 'Situação', get: (e) => EQ_STATUS[e.status].label },
-            { key: 'ultimaMov', label: 'Última movimentação', get: (e) => fmtDate(e.ultimaMov) },
-          ]} />
+          <ExportButton module="inventario" rows={sorted} name={`equipamentos-${company}`} filtros={[f.situacao ? EQ_STATUS[f.situacao as EquipStatus]?.label : 'Todas as situações', f.tipo, f.q && `busca “${f.q}”`].filter(Boolean).join(' · ')} />
           {can('inventario', 'cadastrar') && <Link className="btn btn-primary" to="/inventario/equipamentos/novo"><Plus size={18} />Cadastrar equipamento</Link>}
         </>}
       />

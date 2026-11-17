@@ -8,6 +8,7 @@ export const ADMIN_ACTIONS = [
   { id: 'aplicar_acesso', label: 'Aplicar alterações de acesso' },
   { id: 'exportacoes', label: 'Configurar exportações' },
   { id: 'plugins', label: 'Gerenciar plugins' },
+  { id: 'auditoria', label: 'Consultar auditoria' },
 ];
 
 /** Módulos e ações declaradas (plugins + administração). */

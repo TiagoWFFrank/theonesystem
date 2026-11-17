@@ -1,4 +1,12 @@
-# Plataforma AZIME — protótipo de apresentação (0.2 · Liquid Glass)
+# Plataforma AZIME — protótipo de apresentação (0.3 · painel pessoal)
+
+> **Novidades da 0.3**: Início como painel pessoal (Meu trabalho com chamados, tarefas e pendências; comunicados da intranet; notificações; mensagens do Teams), plugin demonstrativo **Chamados e Acompanhamento**, painel de trabalho para comentar e avançar tarefas, contrato de contribuições dos plugins, concessões individuais efetivas, exportação permanente × por solicitação, auditoria, e-mails simulados e indisponibilidade por fonte.
+> - Roteiro de apresentação: **[ROTEIRO.md](ROTEIRO.md)** (10 cenários, também no painel do apresentador)
+> - O que funciona, o que é simulado e o que está preparado: **[INTEGRACOES.md](INTEGRACOES.md)**
+> - A referência visual é a 0.2 aprovada (Liquid Glass); as novas telas usam os mesmos componentes.
+
+---
+
 
 Protótipo navegável em **React + TypeScript (Vite)**. Dados fictícios; login Microsoft, instalação de plugin, notificações, leitura de bilhete e exportações XLSX/PDF são **simulados** e persistidos no navegador (`localStorage`).
 
@@ -35,8 +43,9 @@ Arquivos oficiais: coloque `logo.svg` e `symbol.svg` em `src/brands/<marca>/` �
 ## Regras da demonstração
 
 - **Entrada**: “Entrar com Microsoft” (simulado) → escolha da conta → verificação de liberação pela TI → **seleção do ambiente** entre os autorizados (com número de tarefas por ambiente). Conta não liberada: João Victor Alves.
-- **Líderes** (Bruno) têm acesso total de consulta a todas as marcas e **solicitam acessos** da equipe (`/admin/acessos/nova`). A **TI** (Elisa) revisa e **aplica** → vira **permissão individual** no colaborador, com histórico. TI também libera contas, bloqueia (preservando registros) e revoga permissões individuais.
-- **Gerência** (Fábio) configura **exportações** por módulo (formatos, perfis, campos, histórico). O botão *Exportar* aparece só para os perfis escolhidos. CSV é gerado de verdade; XLSX/PDF são simulados.
+- **Líderes** da configuração inicial (Bruno) têm acesso total às operações dos módulos de negócio de todas as marcas e **solicitam acessos** da equipe. A **TI** (Elisa) aplica.
+- **Concessões individuais**: para os demais, o acesso efetivo é exatamente a concessão por ambiente × módulo × ação × escopo. Cargos são modelos (“Modelos de acesso”) e não somam permissões; a TI concede e retira ações na ficha do colaborador.
+- **Gerência** (Fábio) configura **exportações** por módulo: autorização **permanente** (ex.: Inventário para TI) ou **por solicitação** (ex.: Reverso para Expedição, com decisão da Gerência). CSV real; XLSX/PDF simulados.
 - **Preservação**: nada é excluído — bloqueio, desativação de plugin e cancelamento de reserva mantêm os registros; exportações ficam registradas.
 - **Catálogo**: o detalhe do plugin mostra como ele entra em **menus, permissões e funcionalidades**; a instalação de *Reservas de salas* demonstra isso.
 - **Meu trabalho**: as tarefas e contagens do Início usam as mesmas regras dos filtros das listas de destino (`src/platform/pendencias.ts`), então o número clicado é o número de linhas que abre.
@@ -51,11 +60,11 @@ Lista (patrimônio com ícone de tipo, responsável + local, situação, ação 
 | Perfil | Pessoa | Para mostrar |
 |---|---|---|
 | Colaborador | Ana Ribeiro | Início, conferir entrega, passagem VG-0412 |
-| Líder | Bruno Teixeira | Aprovar REV-2026-0148, solicitar acesso |
+| Líder | Bruno Teixeira | Revisar TF-311/TF-309 em Chamados, aprovar REV-2026-0148, solicitar acesso |
 | Compras | Carla Mendes | Compra externa (VG-0418) |
-| Expedição | Diego Santos | Etiqueta e rastreio |
-| TI | Elisa Moura | Entrega AZ-0107, aplicar ACS-0014, liberar conta, plugins |
-| Gerência | Fábio Lima | Exportações |
+| Expedição | Diego Santos | Etiqueta e rastreio; solicitar exportação de Reverso |
+| TI | Elisa Moura | Chamados de TI, entrega AZ-0107, concessões individuais, auditoria, plugins |
+| Gerência | Fábio Lima | Regras e decisões de exportação |
 
 O **painel do apresentador** (selo *Demonstração* no cabeçalho) troca perfil, ambiente, aparência, estados (carregando/erro/vazio/manutenção), transparência e movimento, e traz o roteiro com “Preparar e abrir”.
 
@@ -65,11 +74,11 @@ O **painel do apresentador** (selo *Demonstração* no cabeçalho) troca perfil,
 src/
   brands/        arquivos oficiais das marcas (logo.svg, symbol.svg)
   styles/        tokens.css (marca × tema, materiais) · app.css (camadas, componentes, responsivo)
-  platform/      tipos e contrato de plugin, dados demo, permissões (perfil + individual), Meu trabalho, hooks
+  platform/      tipos e contrato de plugin, dados demo (seed, seed03), permissões individuais, work.ts (coleta das contribuições), sources.ts (adaptadores SharePoint/Feedback/Teams), integrations.ts
   ui/            componentes compartilhados, marca e ambiente, exportação
   layout/        shell (sidebar, cabeçalho, troca de ambiente, apresentador)
   pages/         entrada Microsoft, Início, Meu trabalho, Preferências
-  modules/       inventario · reverso · viagens · reservas · admin (cada um com manifesto)
+  modules/       chamados · inventario · reverso · viagens · reservas · admin (manifesto + contrib.ts com as contribuições ao painel)
 ```
 
 Roteador em *hash* no desenvolvimento e em memória na prévia de arquivo único; na etapa funcional, `createBrowserRouter`.

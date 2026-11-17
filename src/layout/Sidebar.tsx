@@ -1,13 +1,13 @@
 import { NavLink, useLocation } from 'react-router-dom';
-import { ClipboardList, Download, Home, KeyRound, ListTodo, PanelLeftClose, PanelLeftOpen, Puzzle, Star, UserCog, Users, Wrench } from 'lucide-react';
+import { ClipboardList, Download, Home, KeyRound, ListTodo, PanelLeftClose, PanelLeftOpen, Puzzle, ScrollText, Star, UserCog, Users, Wrench } from 'lucide-react';
 import { useDemo } from '@/platform/store';
-import { computePendencias } from '@/platform/pendencias';
+import { collectWork } from '@/platform/work';
 import { COMPANIES, Logo } from '@/ui/brand';
 import { useVisibleModules } from './modules';
 import type { MenuItem, ModuleId } from '@/platform/types';
 
 const ADMIN_ICONS: Record<string, typeof Users> = {
-  '/admin/colaboradores': Users, '/admin/acessos': UserCog, '/admin/perfis': KeyRound, '/admin/exportacoes': Download, '/admin/plugins': Puzzle,
+  '/admin/colaboradores': Users, '/admin/acessos': UserCog, '/admin/perfis': KeyRound, '/admin/exportacoes': Download, '/admin/plugins': Puzzle, '/admin/auditoria': ScrollText,
 };
 
 export function useMenuAllowed() {
@@ -21,7 +21,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const loc = useLocation();
   const mods = useVisibleModules();
   const allowed = useMenuAllowed();
-  const pend = computePendencias(ctx.data, ctx.me, ctx.company);
+  const pend = collectWork(ctx.data, ctx.me, ctx.company).map((q) => ({ module: q.origin, records: q.items.filter((i) => i.stage === 'acao' || i.stage === 'aprovacao') }));
   const total = pend.reduce((s, p) => s + p.records.length, 0);
   const favs = (me && data.favorites[me.id]) || [];
   const plugins = mods.filter((m) => m.id !== 'admin');
@@ -58,7 +58,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <nav className="sidebar-nav" aria-label="Navegação principal">
       <NavLink to="/inicio" onClick={onNavigate} className={cls} title="Início" aria-label="Início"><Home size={19} /><span className="nav-label">Início</span></NavLink>
-      <NavLink to="/pendencias" onClick={onNavigate} className={cls} title="Meu trabalho" aria-label={`Meu trabalho (${total})`}>
+      <NavLink to="/pendencias" onClick={onNavigate} className={cls} aria-label={`Meu trabalho: ${total} precisam de você`} title={`${total} itens precisam de você`}>
         <ListTodo size={19} /><span className="nav-label">Meu trabalho</span>{total > 0 && <><span className="nav-badge">{total}</span><span className="dot-badge" /></>}
       </NavLink>
       {favs.some((f) => plugins.some((p) => p.id === f)) && (

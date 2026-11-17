@@ -90,7 +90,7 @@ export function AcessoNovo() {
     const id = uid('ar');
     const numero = `ACS-00${15 + data.accessRequests.length - 2}`;
     update((d) => { d.accessRequests.push({ id, numero, requesterId: me!.id, targetId: target, companyId: emp, module: mod, actions, scope, justificativa: just.trim(), status: 'pendente', criadoEm: new Date().toISOString() }); });
-    log({ module: 'admin', recordId: id, recordLabel: numero, action: `${me!.name} solicitou: ${moduleName(mod)} · ${actions.map((a) => actionLabel(mod, a)).join(', ')} (${SCOPE_LABEL[scope].toLowerCase()}) para ${tUser!.name}`, companyId: emp });
+    log({ module: 'admin', recordId: id, recordLabel: numero, action: `${me!.name} solicitou: ${moduleName(mod)} · ${actions.map((a) => actionLabel(mod, a)).join(', ')} (${SCOPE_LABEL[scope].toLowerCase()}) para ${tUser!.name}`, kind: 'acesso', companyId: emp });
     notify({ userId: 'u5', module: 'admin', title: 'Solicitação de acesso para aplicar', subject: `${numero} · ${tUser!.name} · ${moduleName(mod)}`, link: `/admin/acessos/${id}`, companyId: emp });
     release();
     toast(<>Solicitação <b>{numero}</b> enviada para a TI.</>);
@@ -180,8 +180,8 @@ export function AcessoDetail() {
       const prev = u.grants[a.companyId]![a.module];
       u.grants[a.companyId]![a.module] = { actions: Array.from(new Set([...(prev?.actions ?? []), ...a.actions])), scope: a.scope };
     });
-    log({ module: 'admin', recordId: a.id, recordLabel: a.numero, action: 'Aplicada pela TI · permissão individual criada', companyId: a.companyId });
-    log({ module: 'admin', recordId: a.targetId, recordLabel: target.name, action: `Permissão individual: ${moduleName(a.module)} · ${a.actions.map((x) => actionLabel(a.module, x)).join(', ')} (${SCOPE_LABEL[a.scope].toLowerCase()}) · ${a.numero}`, companyId: a.companyId });
+    log({ module: 'admin', recordId: a.id, recordLabel: a.numero, action: 'Aplicada pela TI · concessão individual atualizada', kind: 'acesso', companyId: a.companyId });
+    log({ module: 'admin', recordId: a.targetId, recordLabel: target.name, kind: 'acesso', action: `Concessão individual: ${moduleName(a.module)} · ${a.actions.map((x) => actionLabel(a.module, x)).join(', ')} (${SCOPE_LABEL[a.scope].toLowerCase()}) · ${a.numero}`, companyId: a.companyId });
     notify({ userId: a.requesterId, module: 'admin', title: 'Acesso aplicado pela TI', subject: `${a.numero} · ${target.name}`, link: `/admin/acessos/${a.id}`, companyId: a.companyId });
     notify({ userId: a.targetId, module: a.module, title: `Novo acesso em ${moduleName(a.module)}`, subject: a.actions.map((x) => actionLabel(a.module, x)).join(', '), link: '/inicio', companyId: a.companyId });
     toast(<>Acesso <b>{a.numero}</b> aplicado. {target.name.split(' ')[0]} já vê as novas ações.</>);
@@ -190,7 +190,7 @@ export function AcessoDetail() {
   const recusar = () => {
     if (obs.trim().length < 10) { setErr('Explique o motivo da recusa (mínimo de 10 caracteres).'); return; }
     update((d) => { const r = d.accessRequests.find((x) => x.id === a.id)!; r.status = 'recusada'; r.resolvidoPor = me!.id; r.resolvidoEm = new Date().toISOString(); r.obs = obs.trim(); });
-    log({ module: 'admin', recordId: a.id, recordLabel: a.numero, action: `Recusada pela TI: ${obs.trim()}`, companyId: a.companyId });
+    log({ module: 'admin', recordId: a.id, recordLabel: a.numero, action: `Recusada pela TI: ${obs.trim()}`, kind: 'acesso', companyId: a.companyId });
     notify({ userId: a.requesterId, module: 'admin', title: 'Solicitação de acesso recusada', subject: `${a.numero} · ${obs.trim()}`, link: `/admin/acessos/${a.id}`, companyId: a.companyId });
     toast(<>Solicitação <b>{a.numero}</b> recusada e líder notificado.</>);
     setDlg(null);

@@ -1,5 +1,6 @@
 import { Laptop } from 'lucide-react';
 import type { ModuleManifest } from '@/platform/types';
+import { inventarioContrib } from './contrib';
 import EquipamentosList from './EquipamentosList';
 import EquipamentoDetail from './EquipamentoDetail';
 import EntregaForm from './EntregaForm';
@@ -26,6 +27,8 @@ export const inventario: ModuleManifest = {
     { id: 'registrar_entrega', label: 'Registrar entrega' },
   ],
   requirements: ['Identidade central da plataforma', 'Armazenamento de documentos (termos)'],
+  business: true,
+  contributes: inventarioContrib,
   routes: [
     { path: '/inventario/equipamentos', element: EquipamentosList },
     { path: '/inventario/equipamentos/novo', element: CadastroForm },

@@ -2,12 +2,12 @@
 // Na etapa funcional, cada operação aqui vira uma chamada ao backend do domínio (Supabase/PostgreSQL).
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { seedData } from './seed';
-import { effectiveGrant, moduleAvailability, inScope } from './permissions';
+import { effectiveGrant, moduleAvailability, inScope, isLeader } from './permissions';
 import { uid } from './format';
-import type { BrandId, DemoData, Grant, HistoryEvent, ModuleId, Notification, Session, User } from './types';
+import type { AuditKind, BrandId, ContribCtx, DemoData, EmailMessage, Grant, ModuleId, Notification, OriginId, PlatformApi, Session, SourceId, User } from './types';
 
-const DATA_KEY = 'azime-demo-data-v2';
-const SESSION_KEY = 'azime-demo-session-v2';
+const DATA_KEY = 'azime-demo-data-v3';
+const SESSION_KEY = 'azime-demo-session-v3';
 
 function load<T>(key: string): T | null {
   try {
@@ -25,6 +25,12 @@ function save(key: string, value: unknown) {
   }
 }
 
+/** Nome exibido de cada origem (assunto de e-mail, etiquetas) */
+export const ORIGIN_NAME: Partial<Record<OriginId, string>> = {
+  inventario: 'Inventário', reverso: 'Reverso', viagens: 'Viagens', reservas: 'Reservas', chamados: 'Chamados', admin: 'Administração',
+  sharepoint: 'Intranet', feedback: 'Feedback', teams: 'Teams', email: 'E-mail',
+};
+
 const defaultSession: Session = { userId: null, companyId: 'azime', theme: 'light', sim: 'normal', sidebarCollapsed: false };
 
 interface Ctx {
@@ -39,8 +45,17 @@ interface Ctx {
   can: (m: ModuleId, action: string) => boolean;
   available: (m: ModuleId) => ReturnType<typeof moduleAvailability>;
   sees: (m: ModuleId, ownerId?: string) => boolean;
-  log: (e: Omit<HistoryEvent, 'id' | 'ts' | 'companyId' | 'actorId'> & { companyId?: BrandId }) => void;
-  notify: (n: Omit<Notification, 'id' | 'ts' | 'read'>) => void;
+  /** registra no histórico/auditoria e devolve o id do evento */
+  log: (e: { module: ModuleId; recordId: string; recordLabel: string; action: string; kind?: AuditKind; companyId?: BrandId }) => string;
+  /** notificação interna + e-mail (canais definidos) */
+  notify: (n: Omit<Notification, 'id' | 'ts' | 'read'>, opts?: { email?: boolean }) => void;
+  markRead: (ids: string[]) => void;
+  /** fonte ou módulo indisponível (simulado pelo apresentador) */
+  down: (id: SourceId | ModuleId) => boolean;
+  isLeader: boolean;
+  /** contexto para contribuições dos plugins */
+  contrib: ContribCtx | null;
+  api: PlatformApi | null;
   touchRecent: (item: { module: ModuleId; recordId: string; label: string; action: string; link: string }) => void;
   userName: (id?: string) => string;
   reset: () => void;
@@ -68,9 +83,10 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     el.style.colorScheme = session.theme;
     if (session.reduceTransparency) el.dataset.transparency = 'reduced'; else delete el.dataset.transparency;
     if (session.reduceMotion) el.dataset.motion = 'reduced'; else delete el.dataset.motion;
+    for (const k of ['sharepoint', 'feedback', 'teams', 'chamados', 'email']) { if (session.outages?.[k as SourceId]) el.dataset[`down${k}`] = '1'; else delete el.dataset[`down${k}`]; }
     const meta = document.querySelector('meta[name="theme-color"]') ?? Object.assign(document.head.appendChild(document.createElement('meta')), { name: 'theme-color' });
     meta.setAttribute('content', getComputedStyle(el).getPropertyValue('--amb-base').trim() || '#ffffff');
-  }, [session.companyId, session.theme, session.reduceTransparency, session.reduceMotion]);
+  }, [session.companyId, session.theme, session.reduceTransparency, session.reduceMotion, session.outages]);
 
   const update = useCallback((fn: (d: DemoData) => void) => {
     setData((prev) => {
@@ -95,14 +111,31 @@ export function DemoProvider({ children }: { children: ReactNode }) {
         const gr = grant(m);
         return !!gr && !!me && inScope(gr.scope, me, ownerId, data.users);
       },
-      log: (e) =>
+      log: (e) => {
+        const id = uid('ev');
         update((d) => {
-          d.events.push({ id: uid('ev'), ts: new Date().toISOString(), companyId: e.companyId ?? sessionRef.current.companyId, actorId: sessionRef.current.userId ?? '', ...e });
-        }),
-      notify: (n) =>
+          d.events.push({ id, ts: new Date().toISOString(), companyId: e.companyId ?? sessionRef.current.companyId, actorId: sessionRef.current.userId ?? '', module: e.module, recordId: e.recordId, recordLabel: e.recordLabel, action: e.action, kind: e.kind });
+        });
+        return id;
+      },
+      notify: (n, opts) =>
         update((d) => {
-          d.notifications.push({ id: uid('n'), ts: new Date().toISOString(), read: false, companyId: sessionRef.current.companyId, ...n });
+          const id = uid('n');
+          const ts = new Date().toISOString();
+          d.notifications.push({ id, ts, read: false, companyId: sessionRef.current.companyId, ...n });
+          if (opts?.email !== false) {
+            const u = d.users.find((x) => x.id === n.userId);
+            if (u) {
+              const mail: EmailMessage = {
+                id: uid('em'), ts, toUserId: u.id, to: u.email, subject: `[${ORIGIN_NAME[n.module] ?? n.module}] ${n.title} · ${n.subject}`,
+                body: `Olá, ${u.name.split(' ')[0]}.\n\n${n.title}: ${n.subject}.\n\nAbrir na Plataforma AZIME: ${n.link}\n\nMensagem automática · não responda.`,
+                module: n.module, recordId: n.recordId, link: n.link, notificationId: id, companyId: n.companyId ?? sessionRef.current.companyId,
+              };
+              d.emails.push(mail);
+            }
+          }
         }),
+      markRead: (ids) => update((d) => { for (const n of d.notifications) if (ids.includes(n.id)) n.read = true; }),
       touchRecent: (item) =>
         update((d) => {
           const uidv = sessionRef.current.userId;
@@ -116,6 +149,10 @@ export function DemoProvider({ children }: { children: ReactNode }) {
           d.recent[uidv] = list.slice(0, 8);
         }),
       userName: (id) => data.users.find((u) => u.id === id)?.name ?? '—',
+      down: (id) => !!session.outages?.[id],
+      isLeader: isLeader(data, me),
+      contrib: null,
+      api: null,
       reset: () => {
         setData(seedData());
         setSessionState((s) => ({ ...s, sim: 'normal' }));
@@ -123,7 +160,17 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     };
   }, [data, session, me, company, update, setSession, dirty]);
 
-  return <DemoCtx.Provider value={value}>{children}</DemoCtx.Provider>;
+  const full = useMemo<Ctx>(() => {
+    if (!me) return value;
+    const contrib: ContribCtx = {
+      data, me, company, can: value.can, scope: (m) => value.grant(m)?.scope ?? null, userName: value.userName,
+      isLeader: value.isLeader,
+    };
+    const api: PlatformApi = { ctx: contrib, update, log: value.log, notify: value.notify, down: value.down };
+    return { ...value, contrib, api };
+  }, [value, data, me, company, update]);
+
+  return <DemoCtx.Provider value={full}>{children}</DemoCtx.Provider>;
 }
 
 export function useDemo() {

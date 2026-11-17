@@ -4,7 +4,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Check, Loader2, Lock, MailCheck, Moon, ShieldCheck, Sun, UserRound } from 'lucide-react';
 import { useDemo } from '@/platform/store';
-import { computePendencias } from '@/platform/pendencias';
+import { collectWork } from '@/platform/work';
 import { ROLE_LABEL } from '@/platform/permissions';
 import { Avatar, Field } from '@/ui/core';
 import { Ambient, COMPANIES, Logo, Monogram } from '@/ui/brand';
@@ -172,13 +172,13 @@ export function Login() {
           <p className="muted small" style={{ marginBottom: 18 }}>{user.companies.length > 1 ? `Você tem acesso a ${user.companies.length} ambientes. É possível trocar a qualquer momento pelo cabeçalho.` : 'Você tem acesso a um ambiente.'}</p>
           <div role="radiogroup" aria-label="Ambientes autorizados">
             {user.companies.map((b) => {
-              const n = computePendencias(data, user, b).reduce((s, p) => s + p.records.length, 0);
+              const n = collectWork(data, user, b).reduce((s, q) => s + q.items.filter((i) => i.stage === 'acao' || i.stage === 'aprovacao').length, 0);
               return (
                 <button key={b} className="env-card" role="radio" aria-checked={pick === b} aria-pressed={pick === b} onClick={() => previewEnv(b)} onDoubleClick={enter}>
                   <Monogram brand={b} size={44} />
                   <span>
                     <span className="strong" style={{ display: 'block', fontSize: 16 }}>{COMPANIES[b].name}</span>
-                    <span className="xs muted">{COMPANIES[b].tagline}{n ? ` · ${n} ${n === 1 ? 'tarefa' : 'tarefas'} em Meu trabalho` : ' · nenhuma tarefa'}</span>
+                    <span className="xs muted">{COMPANIES[b].tagline}{n ? ` · ${n} ${n === 1 ? 'item precisa' : 'itens precisam'} de você` : ' · nada pendente'}</span>
                   </span>
                   <span className="env-swatch" aria-hidden>{COMPANIES[b].swatches.map((c) => <i key={c} style={{ background: c }} />)}</span>
                 </button>

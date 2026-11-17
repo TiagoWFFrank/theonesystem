@@ -12,6 +12,8 @@ import Inicio from '@/pages/Inicio';
 import Pendencias from '@/pages/Pendencias';
 import Preferencias from '@/pages/Preferencias';
 import NotFoundPage from '@/pages/NotFound';
+import ExportRequestPage from '@/pages/ExportRequest';
+import { IntranetList, IntranetPostPage } from '@/pages/Intranet';
 
 // Hash router no desenvolvimento; memory router na prévia publicada (arquivo único em frame isolado).
 // Na etapa funcional, trocar por createBrowserRouter.
@@ -26,6 +28,9 @@ const routes: RouteObject[] = [
       { path: '/inicio', element: <Inicio /> },
       { path: '/pendencias', element: <Pendencias /> },
       { path: '/preferencias', element: <Preferencias /> },
+      { path: '/exportacoes/:id', element: <ExportRequestPage /> },
+      { path: '/intranet', element: <IntranetList /> },
+      { path: '/intranet/:id', element: <IntranetPostPage /> },
       // rotas fornecidas pelos módulos (plugins) registrados
       ...ALL_MODULES.flatMap((m) => m.routes.map((r) => ({ path: r.path, element: <ModuleGate module={m.id} element={r.element} /> }))),
       { path: '*', element: <NotFoundPage /> },

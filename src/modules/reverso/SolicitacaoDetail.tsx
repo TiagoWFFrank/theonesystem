@@ -42,7 +42,7 @@ export default function SolicitacaoDetail() {
     const evId = uid('ev');
     update((d) => {
       fn(d.reversos.find((x) => x.id === r.id)!);
-      d.events.push({ id: evId, ts: new Date().toISOString(), companyId: company, module: 'reverso', recordId: r.id, recordLabel: r.numero, action, actorId: me!.id });
+      d.events.push({ id: evId, ts: new Date().toISOString(), companyId: company, module: 'reverso', recordId: r.id, recordLabel: r.numero, action, actorId: me!.id, kind: /^(Aprovada|Devolvida)/.test(action) ? 'decisao' : 'operacao' });
     });
     if (notifyUser) notify({ userId: notifyUser.userId, module: 'reverso', title: notifyUser.title, subject: `${r.numero} · ${r.clienteNome}`, link: `/reverso/solicitacoes/${r.id}` });
     touchRecent({ module: 'reverso', recordId: r.id, label: `${r.numero} · ${r.clienteNome}`, action: action.split(' —')[0].split(':')[0], link: `/reverso/solicitacoes/${r.id}` });

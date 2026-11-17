@@ -1,5 +1,6 @@
 import { PackageOpen } from 'lucide-react';
 import type { ModuleManifest } from '@/platform/types';
+import { reversoContrib } from './contrib';
 import SolicitacoesList from './SolicitacoesList';
 import NovaSolicitacao from './NovaSolicitacao';
 import SolicitacaoDetail from './SolicitacaoDetail';
@@ -22,6 +23,8 @@ export const reverso: ModuleManifest = {
     { id: 'expedir', label: 'Incluir etiqueta e rastreio' },
   ],
   requirements: ['Identidade central da plataforma', 'Consulta ao cadastro de clientes', 'Armazenamento de etiquetas'],
+  business: true,
+  contributes: reversoContrib,
   routes: [
     { path: '/reverso/solicitacoes', element: SolicitacoesList },
     { path: '/reverso/solicitacoes/nova', element: NovaSolicitacao },

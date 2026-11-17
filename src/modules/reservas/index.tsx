@@ -102,5 +102,7 @@ export const reservas: ModuleManifest = {
     { id: 'reservar', label: 'Reservar sala' },
   ],
   requirements: ['Identidade central da plataforma'],
+  business: true,
+  contributes: { recordPath: () => '/reservas' },
   routes: [{ path: '/reservas', element: ReservasPage }],
 };

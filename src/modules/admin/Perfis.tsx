@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { ShieldCheck } from 'lucide-react';
 import { useDemo } from '@/platform/store';
 import { moduleAvailability, ROLE_LABEL, ROLES, SCOPE_LABEL } from '@/platform/permissions';
@@ -14,9 +13,8 @@ import type { BrandId, Grant, ModuleId, RoleId, Scope } from '@/platform/types';
 
 
 export default function Perfis() {
-  const { data, company, update, log, setSession, me, can } = useDemo();
+  const { data, company, update, log, can } = useDemo();
   const toast = useToast();
-  const nav = useNavigate();
   const [emp, setEmp] = useState<BrandId>(company);
   const [role, setRole] = useState<RoleId>('colaborador');
   const modules = [...PLUGINS.filter((p) => moduleAvailability(data, emp, p.id) !== 'nao_instalado').map((p) => ({ id: p.id, name: p.name, actions: p.actions })),
@@ -36,7 +34,6 @@ export default function Perfis() {
     ...current.actions.filter((a) => !draft.actions.includes(a)).map((a) => `− ${label(a)}`),
     ...(draft.scope !== current.scope && draft.actions.length ? [`Escopo: ${SCOPE_LABEL[current.scope]} → ${SCOPE_LABEL[draft.scope]}`] : []),
   ];
-  const persona = data.users.find((u) => u.persona && u.roles.includes(role) && (role !== 'colaborador' || u.roles.length === 1));
 
   const save = () => {
     update((d) => {
@@ -45,27 +42,25 @@ export default function Perfis() {
       if (draft.actions.length) d.permissions[emp][role]![mod] = { ...draft };
       else delete d.permissions[emp][role]![mod];
     });
-    log({ module: 'admin', recordId: `perm-${role}`, recordLabel: `Perfil ${ROLE_LABEL[role]}`, action: `${ROLE_LABEL[role]} · ${m.name} · ${COMPANIES[emp].name}: ${diff.join(', ')}`, companyId: emp });
-    toast(<>Acessos alterados para <b>{ROLE_LABEL[role]}</b> em {m.name}: {diff.join(', ')}.</>, persona && persona.id !== me?.id ? {
-      action: { label: `Ver como ${persona.name.split(' ')[0]}`, run: () => { setSession({ userId: persona.id, companyId: emp }); nav('/inicio'); } },
-    } : undefined);
+    log({ module: 'admin', recordId: `perm-${role}`, recordLabel: `Perfil ${ROLE_LABEL[role]}`, action: `Modelo ${ROLE_LABEL[role]} · ${m.name} · ${COMPANIES[emp].name}: ${diff.join(', ')}`, kind: 'acesso', companyId: emp });
+    toast(<>Modelo do cargo <b>{ROLE_LABEL[role]}</b> atualizado em {m.name}. Concessões existentes não mudam.</>);
   };
 
   if (!allowedPage) return <ForbiddenInline module="Perfis e permissões" />;
   return (
     <>
-      <PageHeader crumbs={[{ label: 'Administração' }, { label: 'Perfis e permissões' }]} title="Perfis e permissões"
-        sub="Permissões-base de cada perfil por ambiente. Ajustes de uma pessoa são feitos como permissão individual na ficha do colaborador." />
+      <PageHeader crumbs={[{ label: 'Administração' }, { label: 'Modelos de acesso' }]} title="Modelos de acesso por cargo"
+        sub="Modelos que a TI usa para preencher concessões. Não concedem acesso sozinhos: o acesso efetivo é sempre a concessão individual de cada pessoa." />
       <div className="banner banner-info" style={{ marginBottom: 16 }}>
         <ShieldCheck size={18} style={{ flexShrink: 0, marginTop: 2 }} />
-        <span className="b-text">Nesta demonstração os controles afetam a interface. A implementação real aplicará a autorização nos serviços e no banco de cada domínio.</span>
+        <span className="b-text">Alterar um modelo não muda o acesso de ninguém. Para aplicar, abra a ficha do colaborador e use “Aplicar modelo dos cargos”, revisando cada ação.</span>
       </div>
       <div className="layout-detail">
         <div className="card">
           <div className="form-section">
             <div className="grid-3">
               <Field label="Ambiente" htmlFor="p-emp"><select id="p-emp" className="select" value={emp} onChange={(e) => setEmp(e.target.value as BrandId)}>{(Object.keys(COMPANIES) as BrandId[]).map((c) => <option key={c} value={c}>{COMPANIES[c].name}</option>)}</select></Field>
-              <Field label="Perfil" htmlFor="p-role"><select id="p-role" className="select" value={role} onChange={(e) => setRole(e.target.value as RoleId)}>{ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}</select></Field>
+              <Field label="Cargo" htmlFor="p-role"><select id="p-role" className="select" value={role} onChange={(e) => setRole(e.target.value as RoleId)}>{ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}</select></Field>
               <Field label="Módulo" htmlFor="p-mod"><select id="p-mod" className="select" value={m.id} onChange={(e) => setMod(e.target.value as ModuleId)}>{modules.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
             </div>
           </div>
@@ -98,7 +93,7 @@ export default function Perfis() {
           )}
           <div className="form-actions">
             <button className="btn btn-secondary" disabled={!diff.length} onClick={() => setDraft(current)}>Descartar</button>
-            <button className="btn btn-primary" disabled={!diff.length} onClick={() => setConfirm(true)}><ShieldCheck size={17} />Salvar acessos</button>
+            <button className="btn btn-primary" disabled={!diff.length} onClick={() => setConfirm(true)}><ShieldCheck size={17} />Salvar modelo</button>
           </div>
         </div>
         <aside className="stack">
@@ -125,8 +120,8 @@ export default function Perfis() {
           </div>
         </aside>
       </div>
-      <Confirm open={confirm} onClose={() => setConfirm(false)} onConfirm={save} confirmLabel="Salvar acessos" title="Confirmar alteração de acessos"
-        desc={`${ROLE_LABEL[role]} · ${m.name} · ${COMPANIES[emp].name}. Afeta todos os colaboradores com este perfil.`}>
+      <Confirm open={confirm} onClose={() => setConfirm(false)} onConfirm={save} confirmLabel="Salvar modelo" title="Salvar modelo do cargo"
+        desc={`${ROLE_LABEL[role]} · ${m.name} · ${COMPANIES[emp].name}. Não altera o acesso de ninguém até ser aplicado na ficha de cada pessoa.`}>
         <ul className="checklist">{diff.map((d) => <li key={d} className="strong">{d}</li>)}</ul>
       </Confirm>
     </>

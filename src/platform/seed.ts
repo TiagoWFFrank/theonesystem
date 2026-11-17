@@ -1,4 +1,5 @@
 // Cenário de demonstração. Todos os nomes, clientes, valores e documentos são fictícios.
+import { seedChamados, seedComments, seedEmails, seedFeedback, seedPosts, seedTarefas, seedTeams } from './seed03';
 import type {
   Attachment, BrandId, DemoData, Equipment, Grant, HistoryEvent, ModuleId, Notification,
   PermissionMatrix, RoleId, Reverso, Viagem, User,
@@ -38,6 +39,7 @@ function defaultGrants(): Partial<Record<RoleId, Partial<Record<ModuleId, Grant>
       inventario: g(['ver'], 'proprios'),
       reverso: g(['ver', 'abrir'], 'proprios'),
       viagens: g(['ver'], 'proprios'),
+      chamados: g(['ver', 'abrir', 'atender'], 'proprios'),
     },
     // Líderes: acesso total de consulta em todas as marcas; solicitam acessos da equipe
     gestor: {
@@ -51,14 +53,16 @@ function defaultGrants(): Partial<Record<RoleId, Partial<Record<ModuleId, Grant>
     // TI: opera o inventário e aplica as alterações de acesso
     ti: {
       inventario: g(['ver', 'cadastrar', 'registrar_entrega'], 'empresa'),
-      admin: g(['colaboradores', 'aplicar_acesso', 'plugins'], 'empresa'),
+      chamados: g(['ver', 'abrir', 'atender', 'gerenciar'], 'empresa'),
+      admin: g(['colaboradores', 'aplicar_acesso', 'plugins', 'auditoria'], 'empresa'),
     },
     // Gerência: consulta tudo e configura exportações
     gerencia: {
       inventario: g(['ver'], 'empresa'),
       reverso: g(['ver'], 'empresa'),
       viagens: g(['ver'], 'empresa'),
-      admin: g(['colaboradores', 'exportacoes'], 'empresa'),
+      chamados: g(['ver'], 'empresa'),
+      admin: g(['colaboradores', 'exportacoes', 'auditoria'], 'empresa'),
     },
   };
 }
@@ -173,34 +177,38 @@ export const seedEvents = (): HistoryEvent[] => [
   ev({ ts: rel(-5), companyId: 'novitah', module: 'inventario', recordId: 'e16', recordLabel: 'NV-0290', action: 'Enviado para manutenção — Moto Service', actorId: 'u5' }),
   ev({ ts: rel(-1, 14, 20), companyId: 'alinare', module: 'reverso', recordId: 'r1', recordLabel: 'REV-2026-0148', action: 'Solicitação aberta', actorId: 'u11' }),
   ev({ ts: rel(-4, 10), companyId: 'alinare', module: 'reverso', recordId: 'r2', recordLabel: 'REV-2026-0145', action: 'Solicitação aberta', actorId: 'u7' }),
-  ev({ ts: rel(-3, 9, 40), companyId: 'alinare', module: 'reverso', recordId: 'r2', recordLabel: 'REV-2026-0145', action: 'Aprovada — aguardando expedição', actorId: 'u2' }),
+  ev({ ts: rel(-3, 9, 40), companyId: 'alinare', module: 'reverso', recordId: 'r2', recordLabel: 'REV-2026-0145', action: 'Aprovada — aguardando expedição', kind: 'decisao', actorId: 'u2' }),
   ev({ ts: rel(-9, 11), companyId: 'alinare', module: 'reverso', recordId: 'r3', recordLabel: 'REV-2026-0139', action: 'Solicitação aberta', actorId: 'u11' }),
-  ev({ ts: rel(-8, 16), companyId: 'alinare', module: 'reverso', recordId: 'r3', recordLabel: 'REV-2026-0139', action: 'Aprovada — aguardando expedição', actorId: 'u2' }),
+  ev({ ts: rel(-8, 16), companyId: 'alinare', module: 'reverso', recordId: 'r3', recordLabel: 'REV-2026-0139', action: 'Aprovada — aguardando expedição', kind: 'decisao', actorId: 'u2' }),
   ev({ ts: rel(-8, 17), companyId: 'alinare', module: 'reverso', recordId: 'r3', recordLabel: 'REV-2026-0139', action: 'Etiqueta incluída · rastreio BR548812937BR', actorId: 'u4' }),
   ev({ ts: rel(0, 9, 10), companyId: 'alinare', module: 'reverso', recordId: 'r4', recordLabel: 'REV-2026-0151', action: 'Solicitação aberta', actorId: 'u1' }),
   ev({ ts: rel(-2, 15), companyId: 'novitah', module: 'reverso', recordId: 'r6', recordLabel: 'REV-2026-0150', action: 'Solicitação aberta', actorId: 'u11' }),
-  ev({ ts: rel(-1, 10), companyId: 'novitah', module: 'reverso', recordId: 'r6', recordLabel: 'REV-2026-0150', action: 'Devolvida para ajuste: informe o número da nota fiscal de venda', actorId: 'u2' }),
+  ev({ ts: rel(-1, 10), companyId: 'novitah', module: 'reverso', recordId: 'r6', recordLabel: 'REV-2026-0150', action: 'Devolvida para ajuste: informe o número da nota fiscal de venda', kind: 'decisao', actorId: 'u2' }),
   ev({ ts: rel(-5), companyId: 'novitah', module: 'reverso', recordId: 'r7', recordLabel: 'REV-2026-0147', action: 'Solicitação aberta', actorId: 'u1' }),
-  ev({ ts: rel(-4, 11), companyId: 'novitah', module: 'reverso', recordId: 'r7', recordLabel: 'REV-2026-0147', action: 'Aprovada — aguardando expedição', actorId: 'u2' }),
+  ev({ ts: rel(-4, 11), companyId: 'novitah', module: 'reverso', recordId: 'r7', recordLabel: 'REV-2026-0147', action: 'Aprovada — aguardando expedição', kind: 'decisao', actorId: 'u2' }),
   ev({ ts: rel(0, 8, 45), companyId: 'novitah', module: 'reverso', recordId: 'r9', recordLabel: 'REV-2026-0152', action: 'Solicitação aberta', actorId: 'u11' }),
   ev({ ts: rel(-10), companyId: 'azime', module: 'viagens', recordId: 'v1', recordLabel: 'VG-0412', action: 'Viagem solicitada', actorId: 'u1' }),
   ev({ ts: rel(-3, 11), companyId: 'azime', module: 'viagens', recordId: 'v1', recordLabel: 'VG-0412', action: 'Passagens e hospedagem emitidas', actorId: 'u3' }),
   ev({ ts: rel(-2), companyId: 'azime', module: 'viagens', recordId: 'v2', recordLabel: 'VG-0418', action: 'Viagem solicitada', actorId: 'u1' }),
   ev({ ts: rel(-6, 17), companyId: 'alinare', module: 'viagens', recordId: 'v3', recordLabel: 'VG-0405', action: 'Compra externa registrada (exceção)', actorId: 'u3' }),
   ev({ ts: rel(-4), companyId: 'novitah', module: 'viagens', recordId: 'v6', recordLabel: 'VG-0409', action: 'Passagens emitidas — hospedagem pendente', actorId: 'u3' }),
-  ev({ ts: rel(-7, 10), companyId: 'novitah', module: 'admin', recordId: 'u10', recordLabel: 'João Victor Alves', action: 'Conta Microsoft cadastrada — aguardando liberação da TI', actorId: 'u5' }),
-  ev({ ts: rel(-12, 16), companyId: 'azime', module: 'admin', recordId: 'u12', recordLabel: 'Marcos Rocha', action: 'Acesso bloqueado — desligamento (registros preservados)', actorId: 'u5' }),
-  ev({ ts: rel(-15, 11), companyId: 'alinare', module: 'admin', recordId: 'ar1', recordLabel: 'ACS-0011', action: 'Bruno Teixeira solicitou: Inventário · consultar (empresa) para Gabriela Nunes', actorId: 'u2' }),
-  ev({ ts: rel(-14, 9), companyId: 'alinare', module: 'admin', recordId: 'ar1', recordLabel: 'ACS-0011', action: 'Aplicada pela TI · permissão individual criada', actorId: 'u5' }),
-  ev({ ts: rel(-14, 9), companyId: 'alinare', module: 'admin', recordId: 'u7', recordLabel: 'Gabriela Nunes', action: 'Permissão individual: Inventário · consultar (empresa) · ACS-0011', actorId: 'u5' }),
-  ev({ ts: rel(-2, 15), companyId: 'alinare', module: 'admin', recordId: 'export-reverso', recordLabel: 'Exportação reversos-alinare', action: 'Exportação CSV · 5 registros · 5 campos (Diego Santos)', actorId: 'u4' }),
-  ev({ ts: rel(-1, 17), companyId: 'alinare', module: 'admin', recordId: 'ar2', recordLabel: 'ACS-0014', action: 'Bruno Teixeira solicitou: Reverso · aprovar (equipe) para Ana Ribeiro', actorId: 'u2' }),
+  ev({ ts: rel(-7, 10), companyId: 'novitah', module: 'admin', recordId: 'u10', recordLabel: 'João Victor Alves', action: 'Conta Microsoft cadastrada — aguardando liberação da TI', kind: 'acesso', actorId: 'u5' }),
+  ev({ ts: rel(-12, 16), companyId: 'azime', module: 'admin', recordId: 'u12', recordLabel: 'Marcos Rocha', action: 'Acesso bloqueado — desligamento (registros preservados)', kind: 'acesso', actorId: 'u5' }),
+  ev({ ts: rel(-15, 11), companyId: 'alinare', module: 'admin', recordId: 'ar1', recordLabel: 'ACS-0011', action: 'Bruno Teixeira solicitou: Inventário · consultar (empresa) para Gabriela Nunes', kind: 'acesso', actorId: 'u2' }),
+  ev({ ts: rel(-14, 9), companyId: 'alinare', module: 'admin', recordId: 'ar1', recordLabel: 'ACS-0011', action: 'Aplicada pela TI · permissão individual criada', kind: 'acesso', actorId: 'u5' }),
+  ev({ ts: rel(-14, 9), companyId: 'alinare', module: 'admin', recordId: 'u7', recordLabel: 'Gabriela Nunes', action: 'Permissão individual: Inventário · consultar (empresa) · ACS-0011', kind: 'acesso', actorId: 'u5' }),
+  ev({ ts: rel(-2, 15), companyId: 'alinare', module: 'admin', recordId: 'export-reverso', recordLabel: 'Exportação reversos-alinare', action: 'Exportação CSV · 5 registros · 5 campos (Diego Santos)', kind: 'exportacao', actorId: 'u4' }),
+  ev({ ts: rel(-1, 17), companyId: 'alinare', module: 'admin', recordId: 'ar2', recordLabel: 'ACS-0014', action: 'Bruno Teixeira solicitou: Reverso · aprovar (equipe) para Ana Ribeiro', kind: 'acesso', actorId: 'u2' }),
 ];
 
 let nc = 0;
 const nt = (n: Omit<Notification, 'id'>): Notification => ({ id: `n${++nc}`, ...n });
 export const seedNotifications = (): Notification[] => [
-  nt({ userId: 'u1', ts: rel(-3, 11), module: 'viagens', title: 'Documentos disponíveis', subject: 'VG-0412 · Belo Horizonte/MG', link: '/viagens/v1', companyId: 'azime', read: false }),
+  nt({ userId: 'u1', ts: rel(-3, 11), module: 'viagens', kind: 'documento', title: 'Documento de viagem disponível', subject: 'VG-0412 · Belo Horizonte/MG', recordId: 'v1', link: '/viagens/v1', companyId: 'azime', read: false }),
+  nt({ userId: 'u1', ts: new Date(Date.now() - 95 * 60000).toISOString(), module: 'chamados', kind: 'comentario', title: 'Novo comentário em CH-2044', subject: 'Elisa Moura: “Qual workspace do Power BI você precisa?”', link: '/chamados/c3', recordId: 'c3', companyId: 'azime', read: false }),
+  nt({ userId: 'u1', ts: rel(-1, 11), module: 'chamados', kind: 'tarefa', title: 'Tarefa TF-314 atribuída a você', subject: 'Confirmar agenda de visitas a lojistas · prazo em 6 dias', link: '/chamados/tarefas/t3', recordId: 't3', companyId: 'azime', read: false }),
+  nt({ userId: 'u1', ts: new Date(Date.now() - 150 * 60000).toISOString(), module: 'sharepoint', kind: 'comunicado', title: 'Comunicado publicado na intranet', subject: 'Festa de fim de ano 2026: confirme sua presença', link: '/intranet/p1', recordId: 'p1', read: false }),
+  nt({ userId: 'u2', ts: new Date(Date.now() - 150 * 60000).toISOString(), module: 'sharepoint', kind: 'comunicado', title: 'Comunicado publicado na intranet', subject: 'Festa de fim de ano 2026: confirme sua presença', link: '/intranet/p1', recordId: 'p1', read: false }),
   nt({ userId: 'u1', ts: rel(0, 9, 10), module: 'reverso', title: 'Solicitação enviada para aprovação', subject: 'REV-2026-0151 · Atelier Dourado Joias', link: '/reverso/solicitacoes/r4', companyId: 'alinare', read: true }),
   nt({ userId: 'u2', ts: rel(-1, 14, 20), module: 'reverso', title: 'Aprovação aguardando sua decisão', subject: 'REV-2026-0148 · Mercadoria errada', link: '/reverso/solicitacoes/r1', companyId: 'alinare', read: false }),
   nt({ userId: 'u2', ts: rel(0, 9, 10), module: 'reverso', title: 'Aprovação aguardando sua decisão', subject: 'REV-2026-0151 · Troca de tamanho', link: '/reverso/solicitacoes/r4', companyId: 'alinare', read: false }),
@@ -212,10 +220,41 @@ export const seedNotifications = (): Notification[] => [
   nt({ userId: 'u6', ts: rel(-2, 15), module: 'admin', title: 'Exportação de Reverso realizada', subject: 'Diego Santos · CSV · 9 registros', link: '/admin/exportacoes', companyId: 'alinare', read: false }),
 ];
 
+/** Concessões individuais iniciais: a TI partiu do modelo do cargo de cada pessoa (o acesso efetivo é sempre individual). */
+function materializeGrants(users: User[], templates: PermissionMatrix): User[] {
+  return users.map((u) => {
+    const grants: NonNullable<User['grants']> = structuredClone(u.grants ?? {});
+    for (const b of u.companies) {
+      grants[b] ??= {};
+      for (const r of u.roles) for (const [m, gr] of Object.entries(templates[b]?.[r] ?? {})) {
+        const prev = grants[b]![m as ModuleId];
+        grants[b]![m as ModuleId] = prev
+          ? { actions: Array.from(new Set([...prev.actions, ...gr!.actions])), scope: (['proprios', 'equipe', 'empresa'].indexOf(gr!.scope) > ['proprios', 'equipe', 'empresa'].indexOf(prev.scope) ? gr!.scope : prev.scope) as Grant['scope'] }
+          : structuredClone(gr!);
+      }
+    }
+    return { ...u, grants };
+  });
+}
+
 export function seedData(): DemoData {
   evc = 0; nc = 0;
+  const templates = seedPermissions();
+  const now = Date.now();
   return {
-    users: structuredClone(seedUsers),
+    users: materializeGrants(structuredClone(seedUsers), templates),
+    config: { leaders: ['u2'] },
+    chamados: seedChamados(),
+    tarefas: seedTarefas(),
+    comments: seedComments(),
+    posts: seedPosts(),
+    feedback: seedFeedback(),
+    teams: seedTeams(),
+    emails: seedEmails(),
+    sync: { sharepoint: new Date(now - 18 * 60000).toISOString(), feedback: new Date(now - 18 * 60000).toISOString(), teams: new Date(now - 2 * 60000).toISOString(), chamados: new Date(now - 60000).toISOString() },
+    exportRequests: [
+      { id: 'x1', numero: 'EXP-0006', module: 'reverso', companyId: 'alinare', requesterId: 'u4', formato: 'CSV', registros: 5, filtros: 'Todas as situações', recordIds: ['r1', 'r2', 'r3', 'r4', 'r5'], justificativa: 'Fechamento mensal da expedição.', status: 'baixada', criadoEm: rel(-3, 14), decididoPor: 'u6', decididoEm: rel(-2, 14) },
+    ],
     equipments: structuredClone(seedEquipments),
     reversos: structuredClone(seedReversos),
     viagens: structuredClone(seedViagens),
@@ -238,12 +277,13 @@ export function seedData(): DemoData {
     attachments: structuredClone(seedAttachments),
     events: seedEvents(),
     notifications: seedNotifications(),
-    permissions: seedPermissions(),
+    permissions: templates,
     plugins: [
       { id: 'inventario', version: '2.3.0', status: 'instalado', maintenance: false, companies: ['azime', 'alinare', 'novitah'] },
       { id: 'reverso', version: '1.8.2', status: 'instalado', maintenance: false, companies: ['alinare', 'novitah'] },
       { id: 'viagens', version: '1.2.0', status: 'instalado', maintenance: false, companies: ['azime', 'alinare', 'novitah'] },
       { id: 'reservas', version: '0.9.0', status: 'disponivel', maintenance: false, companies: [] },
+      { id: 'chamados', version: '0.1.0-demo', status: 'instalado', maintenance: false, companies: ['azime', 'alinare'] },
     ],
     favorites: { u1: ['viagens'], u2: ['reverso'], u3: ['viagens'], u4: ['reverso'], u5: ['inventario'], u6: [] },
     accessRequests: [
@@ -251,9 +291,9 @@ export function seedData(): DemoData {
       { id: 'ar2', numero: 'ACS-0014', requesterId: 'u2', targetId: 'u1', companyId: 'alinare', module: 'reverso', actions: ['ver', 'abrir', 'aprovar'], scope: 'equipe', justificativa: 'Ana cobrirá as aprovações de reverso da equipe durante as férias do líder (01 a 15/12).', status: 'pendente', criadoEm: rel(-1, 17) },
     ],
     exportConfig: {
-      inventario: { enabled: true, formats: ['CSV', 'XLSX'], roles: ['ti', 'gerencia'], fields: ['patrimonio', 'descricao', 'tipo', 'responsavel', 'localizacao', 'situacao', 'ultimaMov'], includeHistory: false },
-      reverso: { enabled: true, formats: ['CSV'], roles: ['gerencia', 'expedicao'], fields: ['numero', 'motivo', 'cliente', 'situacao', 'abertura'], includeHistory: true },
-      viagens: { enabled: false, formats: ['CSV'], roles: ['gerencia'], fields: ['codigo', 'viajante', 'destino', 'periodo', 'situacao'], includeHistory: false },
+      inventario: { enabled: true, mode: 'permanente', formats: ['CSV', 'XLSX'], roles: ['ti', 'gerencia'], fields: ['patrimonio', 'descricao', 'tipo', 'responsavel', 'localizacao', 'situacao', 'ultimaMov'], includeHistory: false },
+      reverso: { enabled: true, mode: 'aprovacao', formats: ['CSV'], roles: ['expedicao', 'gestor'], fields: ['numero', 'motivo', 'cliente', 'situacao', 'abertura'], includeHistory: true },
+      viagens: { enabled: false, mode: 'aprovacao', formats: ['CSV'], roles: ['compras'], fields: ['codigo', 'viajante', 'destino', 'periodo', 'situacao'], includeHistory: false },
     },
     recent: {},
   };

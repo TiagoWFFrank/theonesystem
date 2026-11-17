@@ -3,13 +3,16 @@ import { Link, useLocation, useMatches, useNavigate } from 'react-router-dom';
 import { Bell, Check, ChevronDown, LogOut, Menu, Moon, Presentation, Search, Settings, Sun } from 'lucide-react';
 import { useDemo } from '@/platform/store';
 import { guardBypass } from '@/platform/hooks';
-import { fmtRelative } from '@/platform/format';
 import { moduleAvailability, effectiveGrant, ROLE_LABEL } from '@/platform/permissions';
 import { Avatar, Dialog } from '@/ui/core';
 import { COMPANIES, Monogram } from '@/ui/brand';
 import { useToast } from '@/ui/toast';
 import { ALL_MODULES, useVisibleModules } from './modules';
-import type { BrandId, ModuleId } from '@/platform/types';
+import { NotificationRows, useNotifications } from '@/ui/feeds';
+import { ORIGINS } from '@/ui/origin';
+import { postsFor } from '@/platform/sources';
+import { findRec, seesChamado } from '@/modules/chamados/ops';
+import type { BrandId, ModuleId, OriginId } from '@/platform/types';
 
 function useClickOutside(open: boolean, close: () => void) {
   const ref = useRef<HTMLDivElement>(null);
@@ -109,40 +112,13 @@ function EnvironmentSwitcher() {
 }
 
 function Notifications() {
-  const { data, me, update, setSession, company } = useDemo();
   const nav = useNavigate();
+  const { list, unread, elsewhere, markRead } = useNotifications();
   const [open, setOpen] = useState(false);
   const ref = useClickOutside(open, () => setOpen(false));
-  if (!me) return null;
-  const list = data.notifications.filter((n) => n.userId === me.id).sort((a, b) => b.ts.localeCompare(a.ts));
-  const unread = list.filter((n) => !n.read).length;
   const recent = list.filter((n) => Date.now() - new Date(n.ts).getTime() < 86400000);
   const older = list.filter((n) => Date.now() - new Date(n.ts).getTime() >= 86400000);
-  const openN = (id: string, link: string, companyId?: BrandId) => {
-    update((d) => { d.notifications.find((x) => x.id === id)!.read = true; });
-    if (companyId && companyId !== company && me.companies.includes(companyId)) setSession({ companyId });
-    setOpen(false);
-    nav(link);
-  };
-  const Group = ({ title, items }: { title: string; items: typeof list }) => items.length ? (
-    <>
-      <div className="menu-head">{title}</div>
-      {items.map((n) => {
-        const m = ALL_MODULES.find((x) => x.id === n.module)!;
-        return (
-          <button key={n.id} className="menu-item" style={{ alignItems: 'flex-start' }} onClick={() => openN(n.id, n.link, n.companyId)}>
-            <span className="mod-icon" style={{ width: 34, height: 34, borderRadius: 11 }}><m.icon size={16} /></span>
-            <span style={{ flex: 1, minWidth: 0 }}>
-              <span style={{ display: 'block', fontWeight: n.read ? 500 : 700 }}>{n.title}</span>
-              <span className="xs muted" style={{ display: 'block' }}>{n.subject}</span>
-              <span className="xs subtle">{m.name}{n.companyId ? ` · ${COMPANIES[n.companyId].name}` : ''} · {fmtRelative(n.ts)}</span>
-            </span>
-            {!n.read && <span aria-label="Não lida" style={{ width: 8, height: 8, borderRadius: 4, background: 'var(--accent)', marginTop: 6, flexShrink: 0 }} />}
-          </button>
-        );
-      })}
-    </>
-  ) : null;
+  const pick = (n: (typeof list)[number]) => { if (!n.read) markRead([n.id]); setOpen(false); nav(n.link); };
   return (
     <div ref={ref} style={{ position: 'relative' }}>
       <button className="icon-btn" aria-label={`Notificações${unread ? `, ${unread} não lidas` : ''}`} aria-expanded={open} onClick={() => setOpen(!open)}>
@@ -152,11 +128,15 @@ function Notifications() {
         <div className="popover glass-strong" style={{ width: 'min(400px, calc(100vw - 24px))', right: -50 }}>
           <div className="row" style={{ padding: '14px 16px 8px' }}>
             <span className="strong">Notificações</span><span className="spacer" />
-            {unread > 0 && <button className="btn btn-ghost btn-xs" onClick={() => update((d) => d.notifications.forEach((n) => { if (n.userId === me.id) n.read = true; }))}>Marcar todas como lidas</button>}
+            {unread > 0 && <button className="btn btn-ghost btn-xs" onClick={() => markRead(list.filter((n) => !n.read).map((n) => n.id))}>Marcar todas como lidas</button>}
           </div>
           <div style={{ maxHeight: 440, overflowY: 'auto', paddingBottom: 6 }}>
-            {list.length === 0 ? <p className="muted small" style={{ padding: 20 }}>Nenhuma notificação.</p> : <><Group title="Recentes" items={recent} /><Group title="Anteriores" items={older} /></>}
+            {list.length === 0 ? <p className="muted small" style={{ padding: 20 }}>Nenhuma notificação.</p> : <>
+              {recent.length > 0 && <><div className="menu-head">Recentes</div><NotificationRows items={recent} onPick={pick} /></>}
+              {older.length > 0 && <><div className="menu-head">Anteriores</div><NotificationRows items={older} onPick={pick} /></>}
+            </>}
           </div>
+          {elsewhere > 0 && <p className="xs muted" style={{ padding: '10px 16px', borderTop: '1px solid var(--border)' }}>+{elsewhere} não {elsewhere === 1 ? 'lida' : 'lidas'} em outros ambientes · troque de ambiente para ver</p>}
         </div>
       )}
     </div>
@@ -197,7 +177,7 @@ function UserMenu() {
 
 /** Busca global agrupada por módulo, respeitando permissões e ambiente ativo. */
 function GlobalSearch() {
-  const { data, company, sees, can, userName } = useDemo();
+  const { data, company, sees, can, userName, contrib, me } = useDemo();
   const mods = useVisibleModules();
   const nav = useNavigate();
   const [q, setQ] = useState('');
@@ -219,6 +199,11 @@ function GlobalSearch() {
     if (on('inventario')) out.push({ mod: 'inventario', label: 'Inventário', items: data.equipments.filter((e) => e.companyId === company && sees('inventario', e.responsavelId) && has(e.patrimonio, e.descricao, userName(e.responsavelId), e.serie)).map((e) => ({ title: `${e.patrimonio} · ${e.descricao}`, sub: e.responsavelId ? userName(e.responsavelId) : 'Sem responsável', to: `/inventario/equipamentos/${e.id}` })) });
     if (on('reverso')) out.push({ mod: 'reverso', label: 'Reverso', items: data.reversos.filter((r) => r.companyId === company && sees('reverso', r.solicitanteId) && has(r.numero, r.clienteNome, r.motivo, r.clienteCodigo)).map((r) => ({ title: `${r.numero} · ${r.motivo}`, sub: r.clienteNome, to: `/reverso/solicitacoes/${r.id}` })) });
     if (on('viagens')) out.push({ mod: 'viagens', label: 'Viagens', items: data.viagens.filter((v) => v.companyId === company && sees('viagens', v.viajanteId) && has(v.codigo, v.destino, userName(v.viajanteId))).map((v) => ({ title: `${v.codigo} · ${v.destino}`, sub: userName(v.viajanteId), to: `/viagens/${v.id}` })) });
+    if (on('chamados') && contrib) out.push({ mod: 'chamados', label: 'Chamados e tarefas', items: [
+      ...data.chamados.filter((x) => x.companyId === company && seesChamado(contrib, { kind: 'chamado', ch: x }) && has(x.numero, x.titulo)).map((x) => ({ title: `${x.numero} · ${x.titulo}`, sub: `${userName(x.solicitanteId)} → ${userName(x.responsavelId)}`, to: `/chamados/${x.id}` })),
+      ...data.tarefas.filter((t) => t.companyId === company && seesChamado(contrib, findRec(contrib, t.id)!) && has(t.codigo, t.titulo)).map((t) => ({ title: `${t.codigo} · ${t.titulo}`, sub: userName(t.responsavelId), to: `/chamados/tarefas/${t.id}` })),
+    ] });
+    out.push({ mod: 'sharepoint' as never, label: 'Intranet', items: postsFor(data, company, me).filter((p) => has(p.titulo, p.resumo, p.area)).map((p) => ({ title: p.titulo, sub: `${p.categoria} · ${p.area}`, to: `/intranet/${p.id}` })) });
     if (can('admin', 'colaboradores')) out.push({ mod: 'admin', label: 'Colaboradores', items: data.users.filter((u) => u.companies.includes(company) && has(u.name, u.email)).map((u) => ({ title: u.name, sub: `${u.sector} · ${u.email}`, to: `/admin/colaboradores/${u.id}` })) });
     return out.map((g) => ({ ...g, items: g.items.slice(0, 5) })).filter((g) => g.items.length);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -243,7 +228,7 @@ function GlobalSearch() {
       {open && q.trim().length >= 2 && (
         <div className="search-results glass-strong" id="search-results" role="listbox">
           {groups.length === 0 ? <p className="small muted" style={{ padding: 16 }}>Nenhum resultado para “{q}” nos módulos que você acessa neste ambiente.</p> : groups.map((g) => {
-            const m = ALL_MODULES.find((x) => x.id === g.mod)!;
+            const m = { icon: ORIGINS[g.mod as OriginId].icon };
             return (
               <div className="search-group" key={g.mod}>
                 <div className="search-group-label">{g.label} · {g.items.length}</div>

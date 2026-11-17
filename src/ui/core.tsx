@@ -114,19 +114,19 @@ export function Dialog({ open, onClose, title, desc, children, footer, size, ico
   );
 }
 
-export function Drawer({ open, onClose, title, children, side, footer }: { open: boolean; onClose: () => void; title: ReactNode; children: ReactNode; side?: 'left'; footer?: ReactNode }) {
+export function Drawer({ open, onClose, title, children, side, footer, wide, label }: { open: boolean; onClose: () => void; title: ReactNode; children: ReactNode; side?: 'left'; footer?: ReactNode; wide?: boolean; label?: string }) {
   useEscape(open, onClose);
   if (!open) return null;
   return (
     <>
       <div className="drawer-overlay" onClick={onClose} />
-      <aside className={`drawer glass-strong ${side ?? ''}`} role="dialog" aria-modal="true">
+      <aside className={`drawer glass-strong ${side ?? ''} ${wide ? 'wide' : ''}`} role="dialog" aria-modal="true" aria-label={label}>
         <div className="drawer-head">
           <div style={{ flex: 1, fontWeight: 600 }}>{title}</div>
           <button className="icon-btn" onClick={onClose} aria-label="Fechar painel"><X size={18} /></button>
         </div>
         <div className="drawer-body">{children}</div>
-        {footer && <div style={{ padding: 16, borderTop: '1px solid var(--border)' }}>{footer}</div>}
+        {footer && <div className="drawer-foot">{footer}</div>}
       </aside>
     </>
   );

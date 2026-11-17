@@ -1,5 +1,6 @@
 import { Plane } from 'lucide-react';
 import type { ModuleManifest } from '@/platform/types';
+import { viagensContrib } from './contrib';
 import MinhasViagens from './MinhasViagens';
 import ViagemDetail from './ViagemDetail';
 import CompraExterna from './CompraExterna';
@@ -20,6 +21,8 @@ export const viagens: ModuleManifest = {
     { id: 'registrar_compra', label: 'Registrar compra externa' },
   ],
   requirements: ['Identidade central da plataforma', 'Leitura de documentos (OCR) — futura', 'Armazenamento de bilhetes'],
+  business: true,
+  contributes: viagensContrib,
   routes: [
     { path: '/viagens/minhas', element: MinhasViagens },
     { path: '/viagens/compras/nova', element: CompraExterna },

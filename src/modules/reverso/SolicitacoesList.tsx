@@ -57,11 +57,7 @@ export default function SolicitacoesList() {
         title={scope === 'proprios' ? 'Minhas solicitações' : 'Solicitações de reverso'}
         sub="Logística reversa de mercadorias: abertura, aprovação, etiqueta e rastreio."
         actions={<>
-          <ExportButton module="reverso" rows={sorted} name={`reversos-${company}`} columns={[
-            { key: 'numero', label: 'Número', get: (r) => r.numero }, { key: 'motivo', label: 'Motivo', get: (r) => r.motivo },
-            { key: 'cliente', label: 'Cliente', get: (r) => `${r.clienteCodigo} ${r.clienteNome}` }, { key: 'situacao', label: 'Situação', get: (r) => RV_STATUS[r.status].label },
-            { key: 'abertura', label: 'Abertura', get: (r) => fmtDate(r.criadoEm) },
-          ]} />
+          <ExportButton module="reverso" rows={sorted} name={`reversos-${company}`} filtros={[f.situacao ? RV_STATUS[f.situacao as ReversoStatus]?.label : 'Todas as situações', f.motivo, f.q && `busca “${f.q}”`].filter(Boolean).join(' · ')} />
           {can('reverso', 'abrir') && <Link to="/reverso/solicitacoes/nova" className="btn btn-primary"><Plus size={18} />Abrir solicitação</Link>}
         </>} />
       <div className="card">

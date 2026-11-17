@@ -1,5 +1,6 @@
 import type { BrandId, DemoData, Grant, ModuleId, RoleId, Scope, User } from './types';
 
+/** Cargos: organizam a administração e servem de MODELO para concessões. Não concedem acesso sozinhos. */
 export const ROLE_LABEL: Record<RoleId, string> = {
   colaborador: 'Colaborador',
   gestor: 'Líder',
@@ -13,24 +14,31 @@ export const ROLES: RoleId[] = ['colaborador', 'gestor', 'compras', 'expedicao',
 export const SCOPE_LABEL: Record<Scope, string> = {
   proprios: 'Registros próprios',
   equipe: 'Equipe',
-  empresa: 'Empresa inteira',
+  empresa: 'Ambiente inteiro',
 };
-const SCOPE_RANK: Record<Scope, number> = { proprios: 0, equipe: 1, empresa: 2 };
 
-/** Soma as permissões de todos os perfis do usuário naquela empresa. */
+/** Módulos de negócio e todas as suas operações (acesso total dos líderes definidos na configuração inicial). */
+export const BUSINESS_ACTIONS: Partial<Record<ModuleId, string[]>> = {
+  inventario: ['ver', 'cadastrar', 'registrar_entrega'],
+  reverso: ['ver', 'abrir', 'aprovar', 'expedir'],
+  viagens: ['ver', 'registrar_compra'],
+  reservas: ['ver', 'reservar'],
+  chamados: ['ver', 'abrir', 'atender', 'gerenciar'],
+};
+
+export const isLeader = (data: DemoData, user?: User) => !!user && data.config.leaders.includes(user.id);
+
+/**
+ * Acesso efetivo:
+ *  - Líder (configuração inicial) → todas as ações dos módulos de negócio, em todos os ambientes vinculados.
+ *  - Demais colaboradores → exatamente a concessão individual por ambiente × módulo (ações + escopo).
+ *    Assim a TI concede e RETIRA uma ação de uma pessoa sem interferência de cargo.
+ */
 export function effectiveGrant(data: DemoData, user: User | undefined, company: BrandId, module: ModuleId): Grant | null {
-  if (!user || !user.companies.includes(company)) return null;
-  let out: Grant | null = null;
-  const sources = [...user.roles.map((role) => data.permissions[company]?.[role]?.[module]), user.grants?.[company]?.[module]];
-  for (const gr of sources) {
-    if (!gr || gr.actions.length === 0) continue;
-    if (!out) out = { actions: [...gr.actions], scope: gr.scope };
-    else {
-      out.actions = Array.from(new Set([...out.actions, ...gr.actions]));
-      if (SCOPE_RANK[gr.scope] > SCOPE_RANK[out.scope]) out.scope = gr.scope;
-    }
-  }
-  return out;
+  if (!user || user.status !== 'ativo' || !user.companies.includes(company)) return null;
+  if (isLeader(data, user) && BUSINESS_ACTIONS[module]) return { actions: [...BUSINESS_ACTIONS[module]!], scope: 'empresa' };
+  const gr = user.grants?.[company]?.[module];
+  return gr && gr.actions.length ? { actions: [...gr.actions], scope: gr.scope } : null;
 }
 
 export type Availability = 'ok' | 'nao_instalado' | 'manutencao';
@@ -51,14 +59,9 @@ export function inScope(scope: Scope, user: User, ownerId: string | undefined, u
   return false;
 }
 
-/** Origem de cada permissão do usuário (perfil x individual) — usada na ficha do colaborador. */
+/** Origem da permissão exibida na ficha do colaborador. */
 export function grantSources(data: DemoData, user: User, company: BrandId, module: ModuleId) {
-  const out: { source: string; grant: Grant; individual: boolean }[] = [];
-  for (const role of user.roles) {
-    const gr = data.permissions[company]?.[role]?.[module];
-    if (gr?.actions.length) out.push({ source: `Perfil ${ROLE_LABEL[role]}`, grant: gr, individual: false });
-  }
-  const ind = user.grants?.[company]?.[module];
-  if (ind?.actions.length) out.push({ source: 'Individual', grant: ind, individual: true });
-  return out;
+  const g = effectiveGrant(data, user, company, module);
+  if (!g) return [];
+  return [{ source: isLeader(data, user) && BUSINESS_ACTIONS[module] ? 'Líder · configuração inicial' : 'Concessão individual', grant: g, individual: !(isLeader(data, user) && BUSINESS_ACTIONS[module]) }];
 }

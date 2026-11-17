@@ -5,6 +5,7 @@ import { inventario } from './inventario';
 import { reverso } from './reverso';
 import { viagens } from './viagens';
 import { reservas } from './reservas';
+import { chamados } from './chamados';
 
-export const PLUGINS: ModuleManifest[] = [inventario, reverso, viagens, reservas];
+export const PLUGINS: ModuleManifest[] = [chamados, inventario, reverso, viagens, reservas];
 export const pluginById = (id: ModuleId) => PLUGINS.find((p) => p.id === id);
