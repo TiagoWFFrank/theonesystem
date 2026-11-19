@@ -47,9 +47,18 @@ export function useSwitchCompany() {
     const seg = loc.pathname.split('/').filter(Boolean);
     const mod = ALL_MODULES.find((m) => m.routes.some((r) => r.path.split('/')[1] === seg[0]));
     const isRecord = matches.some((m) => m.params && 'id' in m.params) || /\/(nova|novo)$|\/entrega$/.test(loc.pathname);
+    const pathParts = loc.pathname.split('/').filter(Boolean);
+    const route = mod?.routes.filter((candidate) => {
+      const parts = candidate.path.split('/').filter(Boolean);
+      return parts.length === pathParts.length && parts.every((part, index) => part.startsWith(':') || part === pathParts[index]);
+    }).sort((a, b) => b.path.length - a.path.length)[0];
+    const menu = mod?.menu.filter((item) => loc.pathname === item.path || loc.pathname.startsWith(item.path + '/')).sort((a, b) => b.path.length - a.path.length)[0];
+    const required = route?.requires ?? menu?.requires;
+    const activeGrant = mod ? effectiveGrant(data, me, b, mod.id) : null;
+    const routeAllowed = !required ? !!activeGrant : Array.isArray(required) ? required.some((action) => activeGrant?.actions.includes(action)) : !!activeGrant?.actions.includes(required);
     let to: string | null = null;
     let msg = `Ambiente ${COMPANIES[b].name}.`;
-    if (mod && (moduleAvailability(data, b, mod.id) === 'nao_instalado' || !effectiveGrant(data, me, b, mod.id))) {
+    if (mod && (moduleAvailability(data, b, mod.id) === 'nao_instalado' || !routeAllowed)) {
       to = '/inicio'; msg = `${mod.name} não está disponível em ${COMPANIES[b].name}. Você foi para o Início.`;
     } else if (mod && isRecord) {
       to = lastList[mod.id] ?? mod.basePath;

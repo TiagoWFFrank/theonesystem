@@ -6,6 +6,7 @@ import { effectiveGrant, moduleAvailability, inScope, isLeader } from './permiss
 import { uid } from './format';
 import { healthLabel, originMeta } from './registry';
 import { validateIntegration, type IntegrationId, type Validation } from './integrations';
+import { readGitInstalledPackages } from './externalPackages';
 import { OpError } from './types';
 import type { AuditKind, BrandId, ContribCtx, DemoData, EmailMessage, Grant, HealthId, ModuleId, Notification, PlatformApi, Session, User } from './types';
 
@@ -40,6 +41,17 @@ function load<T>(key: string): T | null {
   } catch {
     return null;
   }
+}
+
+function withGitPluginStates(data: DemoData): DemoData {
+  for (const entry of readGitInstalledPackages()) {
+    const saved = data.plugins.find((plugin) => plugin.id === entry.manifest.id);
+    const status = entry.install.active === false ? 'desativado' : 'instalado';
+    const companies = entry.install.enabledBrands ?? [];
+    if (!saved) data.plugins.push({ id: entry.manifest.id, version: entry.manifest.version, status, maintenance: false, companies: [...companies] });
+    else { saved.version = entry.manifest.version; saved.status = status; saved.companies = [...companies]; }
+  }
+  return data;
 }
 function save(key: string, value: unknown) {
   try {
@@ -88,6 +100,8 @@ interface Ctx {
   reset: () => void;
   dirty: boolean;
   setDirty: (v: boolean) => void;
+  pluginAuthReady: boolean;
+  pluginAuthIdentity: string;
 }
 
 const DemoCtx = createContext<Ctx | null>(null);
@@ -97,7 +111,7 @@ let liveSession: Session = defaultSession;
 export const getLiveSession = () => liveSession;
 
 export function DemoProvider({ children }: { children: ReactNode }) {
-  const [data, setData] = useState<DemoData>(() => load<DemoData>(DATA_KEY) ?? seedData());
+  const [data, setData] = useState<DemoData>(() => withGitPluginStates(load<DemoData>(DATA_KEY) ?? seedData()));
   const [session, setSessionState] = useState<Session>(() => ({ ...defaultSession, ...load<Session>(SESSION_KEY), sim: 'normal' }));
   const [dirty, setDirty] = useState(false);
   const sessionRef = useRef(session);
@@ -108,6 +122,9 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   const healthRef = useRef(health);
   healthRef.current = health;
   const [validations, setValidations] = useState<Partial<Record<IntegrationId, Validation>>>({});
+  const [pluginAuthReady, setPluginAuthReady] = useState(!import.meta.env.DEV);
+  const [pluginAuthIdentity, setPluginAuthIdentity] = useState('');
+  const pluginAccessToken = useRef<string | null>(null);
 
   useEffect(() => save(DATA_KEY, data), [data]);
   useEffect(() => save(SESSION_KEY, session), [session]);
@@ -182,11 +199,51 @@ export function DemoProvider({ children }: { children: ReactNode }) {
 
   const me = data.users.find((u) => u.id === session.userId);
   const company = session.companyId;
+  const leader = isLeader(data, me);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const previous = window.horizonAuth;
+    const getDemoAccessToken = async () => pluginAccessToken.current;
+    window.horizonAuth = { ...previous, getPluginAccessToken: getDemoAccessToken };
+    return () => {
+      if (window.horizonAuth?.getPluginAccessToken === getDemoAccessToken) {
+        if (previous) window.horizonAuth = previous;
+        else delete window.horizonAuth;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    let active = true;
+    pluginAccessToken.current = null;
+    setPluginAuthReady(false);
+    setPluginAuthIdentity('');
+    if (!me || !session.userId) {
+      setPluginAuthReady(true);
+      return () => { active = false; };
+    }
+    fetch('/api/dev/session', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ userId: me.id, brandId: company, brands: me.companies, leader, admin: me.roles.includes('ti') }),
+    }).then(async (response) => {
+      const result = await response.json() as { accessToken?: string };
+      if (!response.ok || !result.accessToken) throw new Error('No demo plugin session');
+      if (active) {
+        pluginAccessToken.current = result.accessToken;
+        setPluginAuthIdentity(me.id + ':' + company);
+        setPluginAuthReady(true);
+      }
+    }).catch(() => { if (active) setPluginAuthReady(true); });
+    return () => { active = false; };
+  }, [session.userId, company, me?.id, me?.companies.join(','), leader]);
 
   const value = useMemo<Ctx>(() => {
     const grant = (m: ModuleId) => (moduleAvailability(data, company, m) === 'nao_instalado' ? null : effectiveGrant(data, me, company, m));
     return {
-      data, session, me, company, update, setSession, dirty, setDirty,
+      data, session, me, company, update, setSession, dirty, setDirty, pluginAuthReady, pluginAuthIdentity,
       grant,
       can: (m, action) => !!grant(m)?.actions.includes(action),
       available: (m) => moduleAvailability(data, company, m),
@@ -238,12 +295,12 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       contrib: null,
       api: null,
       reset: () => {
-        setData(seedData());
+        setData(withGitPluginStates(seedData()));
         setHealth({});
         setSessionState((s) => ({ ...s, sim: 'normal', outages: {} }));
       },
     };
-  }, [data, session, me, company, update, setSession, dirty, health, checkNow, setAutoRetry, call, validations, validate]);
+  }, [data, session, me, company, update, setSession, dirty, health, checkNow, setAutoRetry, call, validations, validate, pluginAuthReady, pluginAuthIdentity]);
 
   const full = useMemo<Ctx>(() => {
     if (!me) return value;

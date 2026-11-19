@@ -6,6 +6,7 @@ import EquipamentoDetail from './EquipamentoDetail';
 import EntregaForm from './EntregaForm';
 import CadastroForm from './CadastroForm';
 import { Manutencoes, Movimentacoes, Relatorios } from './InventarioExtras';
+import { InventoryLiveDetail, InventoryLiveList } from '@/modules/real/ReadOnly';
 
 /** Manifesto do plugin: páginas, rotas, menu e permissões que o módulo oferece à plataforma. */
 export const inventario: ModuleManifest = {
@@ -13,13 +14,10 @@ export const inventario: ModuleManifest = {
   name: 'Inventário',
   description: 'Equipamentos de TI, responsáveis, entregas, devoluções e manutenções.',
   icon: Laptop,
-  basePath: '/inventario/equipamentos',
+  basePath: '/inventario/consulta',
   version: '2.3.0',
   menu: [
-    { label: 'Equipamentos', path: '/inventario/equipamentos' },
-    { label: 'Entregas e devoluções', path: '/inventario/movimentacoes' },
-    { label: 'Manutenções', path: '/inventario/manutencoes' },
-    { label: 'Relatórios', path: '/inventario/relatorios', requires: 'cadastrar' },
+    { label: 'Consultar patrimônio', path: '/inventario/consulta', requires: 'ver' },
   ],
   actions: [
     { id: 'ver', label: 'Consultar equipamentos' },
@@ -30,6 +28,8 @@ export const inventario: ModuleManifest = {
   business: true,
   contributes: inventarioContrib,
   routes: [
+    { path: '/inventario/consulta', element: InventoryLiveList, mode: 'real', requires: 'ver' },
+    { path: '/inventario/consulta/:id', element: InventoryLiveDetail, mode: 'real', requires: 'ver' },
     { path: '/inventario/equipamentos', element: EquipamentosList },
     { path: '/inventario/equipamentos/novo', element: CadastroForm },
     { path: '/inventario/equipamentos/:id', element: EquipamentoDetail },

@@ -10,6 +10,7 @@ import { Timeline } from '@/ui/records';
 import { useToast } from '@/ui/toast';
 import { NotFoundInline } from '@/pages/NotFound';
 import { actionLabel, moduleCatalog } from './meta';
+import { pluginRequestHeaders, readGitInstalledPackages } from '@/platform/externalPackages';
 import type { BrandId, Grant, ModuleId, RoleId, Scope, User } from '@/platform/types';
 
 export const USER_STATUS: Record<User['status'], { label: string; tone: Tone }> = {
@@ -140,7 +141,29 @@ export function ColaboradorDetail() {
     notify({ userId: u.id, module: 'admin', kind: 'acesso', title: 'Seu acesso à plataforma foi alterado', subject: action, link: '/inicio', recordId: u.id });
     toast(msg);
   };
-  const apply = () => {
+  const apply = async () => {
+    const installed = readGitInstalledPackages();
+    const syncGrants = async (pluginId: string, value: NonNullable<User['grants']>) => {
+      const grantsByBrand: Record<string, Grant> = {};
+      for (const brand of Object.keys(COMPANIES) as BrandId[]) {
+        const grant = value[brand]?.[pluginId];
+        if (grant?.actions.length) grantsByBrand[brand] = grant;
+      }
+      const response = await fetch('/api/plugins/' + encodeURIComponent(pluginId) + '/access/grants', {
+        method: 'POST',
+        headers: await pluginRequestHeaders({ 'content-type': 'application/json' }),
+        body: JSON.stringify({ userId: u.id, grantsByBrand }),
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || 'Não foi possível sincronizar as permissões do plugin ' + pluginId + '.');
+    };
+    try {
+      await Promise.all(installed.map((entry) => syncGrants(entry.manifest.id, g)));
+    } catch (reason) {
+      await Promise.all(installed.map((entry) => syncGrants(entry.manifest.id, u.grants ?? {}).catch(() => undefined)));
+      toast(reason instanceof Error ? reason.message : 'Não foi possível salvar as permissões de plugins no servidor.');
+      throw reason;
+    }
     update((d) => { const x = d.users.find((y) => y.id === u.id)!; x.roles = r; x.companies = c; x.grants = g; });
     for (const line of diff) log({ module: 'admin', recordId: u.id, recordLabel: u.name, action: `Concessão alterada pela TI: ${line}`, kind: 'acesso' });
     notify({ userId: u.id, module: 'admin', kind: 'acesso', title: 'Seus acessos foram atualizados pela TI', subject: `${diff.length} ${diff.length === 1 ? 'alteração' : 'alterações'}: ${diff.slice(0, 2).join('; ')}${diff.length > 2 ? '…' : ''}`, link: '/inicio', recordId: u.id });

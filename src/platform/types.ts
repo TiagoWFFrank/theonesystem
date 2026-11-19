@@ -13,7 +13,7 @@ export interface Company {
 
 export type RoleId = 'colaborador' | 'gestor' | 'compras' | 'expedicao' | 'ti' | 'gerencia';
 export type Scope = 'proprios' | 'equipe' | 'empresa';
-export type ModuleId = 'inventario' | 'reverso' | 'viagens' | 'reservas' | 'chamados' | 'admin';
+export type ModuleId = string;
 /** Fontes externas integradas por adaptador (não são plugins) */
 export type SourceId = 'sharepoint' | 'feedback' | 'teams' | 'email';
 /** Origem de uma informação no painel: um plugin ou uma fonte externa */
@@ -449,7 +449,7 @@ export interface ModuleManifest {
   core?: boolean; // não pode ser desinstalado na demo
   /** módulo de negócio (líderes recebem acesso total) */
   business?: boolean;
-  routes: { path: string; element: ComponentType }[];
+  routes: { path: string; element: ComponentType; mode?: 'demo' | 'real'; requires?: string | string[] }[];
   /** sistema de origem do plugin (quando incorpora um sistema existente) e integração usada */
   origin?: { system: string; integration?: string; outageNote?: string };
   /** dados próprios do plugin (estado inicial da demonstração) */

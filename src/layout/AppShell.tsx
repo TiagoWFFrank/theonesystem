@@ -44,7 +44,7 @@ export function AppShell() {
             <div className="page-enter" key={loc.pathname}><Outlet /></div>
           </main>
         </div>
-        <Drawer open={mobileNav} onClose={() => setMobileNav(false)} side="left" title={<Logo brand={company} />}>
+        <Drawer open={mobileNav} onClose={() => setMobileNav(false)} side="left" title={<div className="product-lockup"><span className="product-name">The One System</span><Logo brand={company} /></div>}>
           <div style={{ margin: -12 }}><SidebarNav onNavigate={() => setMobileNav(false)} /></div>
         </Drawer>
         <button className="presenter-fab glass" onClick={() => setPresenter(true)} aria-label="Abrir painel do apresentador"><Presentation size={17} /><span className="lbl">Demonstração</span></button>
@@ -55,11 +55,21 @@ export function AppShell() {
 }
 
 /** Aplica disponibilidade do módulo (instalação/manutenção) e permissão do perfil antes de renderizar a tela. */
-export function ModuleGate({ module, element: El }: { module: ModuleId; element: ComponentType }) {
-  const { available, grant } = useDemo();
+export function ModuleGate({ module, element: El, mode = 'demo', requires }: { module: ModuleId; element: ComponentType; mode?: 'demo' | 'real'; requires?: string | string[] }) {
+  const { available, grant, can } = useDemo();
   const m = ALL_MODULES.find((x) => x.id === module)!;
   const a = available(module);
   if (a !== 'ok') return <ModuleUnavailable name={m.name} reason={a} />;
-  if (!grant(module)) return <ForbiddenInline module={m.name} />;
-  return <El />;
+  const allowed = Array.isArray(requires) ? requires.some((action) => can(module, action)) : requires ? can(module, requires) : !!grant(module);
+  if (!allowed) return <ForbiddenInline module={m.name} />;
+  return (
+    <>
+      {mode === 'demo' && (
+        <div className="banner banner-info" role="note" style={{ marginBottom: 16 }}>
+          <span className="b-text"><b>Demonstração · dados fictícios.</b> Esta rota usa apenas o cenário local; nenhum registro real será consultado ou alterado.</span>
+        </div>
+      )}
+      <El />
+    </>
+  );
 }

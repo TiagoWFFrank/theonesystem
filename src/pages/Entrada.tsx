@@ -35,7 +35,7 @@ function BrandPanel() {
         </div>
         <p style={{ marginTop: 18, color: 'var(--art-muted)', maxWidth: 420 }}>Inventário, reversos, viagens e as próximas funcionalidades, com a identidade de cada ambiente e os acessos definidos pela TI.</p>
       </div>
-      <div className="xs" style={{ position: 'relative', color: 'var(--art-muted)' }}>Plataforma corporativa AZIME · protótipo de apresentação</div>
+      <div className="xs" style={{ position: 'relative', color: 'var(--art-muted)' }}>The One System · AZIME, Alinare e Novitah</div>
     </div>
   );
 }

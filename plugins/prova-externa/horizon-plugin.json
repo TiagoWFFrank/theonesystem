@@ -1,0 +1,41 @@
+{
+  "format": "horizon-plugin",
+  "manifestVersion": 1,
+  "id": "prova-externa",
+  "name": "Plugin de prova externa",
+  "description": "Página declarada em um pacote criado fora do núcleo Horizon.",
+  "version": "1.0.0",
+  "basePath": "/ext/prova-externa",
+  "icon": "Puzzle",
+  "business": false,
+  "actions": [
+    { "id": "ver", "label": "Consultar a página de prova" },
+    { "id": "exportar", "label": "Exportar informações" }
+  ],
+  "menu": [
+    { "label": "Visão geral", "path": "/ext/prova-externa", "requires": "ver" }
+  ],
+  "requirements": [
+    "Sessão e ambiente fornecidos pelo Horizon",
+    "Permissão ver concedida ao perfil selecionado"
+  ],
+  "pages": [
+    {
+      "path": "/ext/prova-externa",
+      "title": "Página de plugin externo",
+      "description": "Esta página veio do manifesto ZIP; seu menu e a permissão ver foram aplicados pelo núcleo.",
+      "requires": "ver",
+      "mode": "demo",
+      "sections": [
+        {
+          "title": "Rota registrada",
+          "body": "O pacote declarou /ext/prova-externa. O React Router recebe a rota quando o navegador recarrega após a importação."
+        },
+        {
+          "title": "Ação declarada",
+          "body": "A permissão prova-externa.ver controla o item de menu e também o acesso direto a esta rota."
+        }
+      ]
+    }
+  ]
+}

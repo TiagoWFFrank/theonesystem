@@ -4,17 +4,17 @@ import { reversoContrib } from './contrib';
 import SolicitacoesList from './SolicitacoesList';
 import NovaSolicitacao from './NovaSolicitacao';
 import SolicitacaoDetail from './SolicitacaoDetail';
+import { ReverseLiveDetail, ReverseLiveList } from '@/modules/real/ReadOnly';
 
 export const reverso: ModuleManifest = {
   id: 'reverso',
   name: 'Reverso',
   description: 'Logística reversa: solicitação, aprovação, etiqueta e rastreio de devoluções.',
   icon: PackageOpen,
-  basePath: '/reverso/solicitacoes',
+  basePath: '/reverso/consulta',
   version: '1.8.2',
   menu: [
-    { label: 'Solicitações', path: '/reverso/solicitacoes' },
-    { label: 'Nova solicitação', path: '/reverso/solicitacoes/nova', requires: 'abrir' },
+    { label: 'Consultar solicitações', path: '/reverso/consulta', requires: 'ver' },
   ],
   actions: [
     { id: 'ver', label: 'Consultar solicitações' },
@@ -26,6 +26,8 @@ export const reverso: ModuleManifest = {
   business: true,
   contributes: reversoContrib,
   routes: [
+    { path: '/reverso/consulta', element: ReverseLiveList, mode: 'real', requires: 'ver' },
+    { path: '/reverso/consulta/:id', element: ReverseLiveDetail, mode: 'real', requires: 'ver' },
     { path: '/reverso/solicitacoes', element: SolicitacoesList },
     { path: '/reverso/solicitacoes/nova', element: NovaSolicitacao },
     { path: '/reverso/solicitacoes/:id', element: SolicitacaoDetail },

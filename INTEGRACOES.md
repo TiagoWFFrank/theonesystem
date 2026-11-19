@@ -1,6 +1,6 @@
 # Integrações · o que funciona, o que é simulado e o que está preparado
 
-Versão 0.4. **Todas as integrações externas usam adaptadores simulados** com dados demonstrativos. A interface sempre mostra a situação de cada integração e o adaptador efetivamente em uso.
+Versão 0.5 em preparação, com o Início e os fluxos demonstrativos da 0.4 preservados. Intranet, Feedback, Chamados, Teams e e-mail continuam simulados. Viagens, Inventário e Reverso têm rotas separadas de consulta real somente leitura; os projetos-fonte, schemas e JWT autorizado ainda não estão disponíveis nesta máquina, portanto esses percursos permanecem **NÃO VALIDADOS**. Sem configuração, as rotas mostram indisponibilidade ou acesso não validado e não usam seeds.
 
 ## Situações de uma integração
 
@@ -14,6 +14,20 @@ Versão 0.4. **Todas as integrações externas usam adaptadores simulados** com 
 - A validação é pedida ao backend de integração (`VITE_INTEGRATION_API` → `GET /integracoes/<id>/status`). O navegador nunca recebe credenciais. Sem backend configurado, a validação informa que não pode ser feita.
 - Nesta versão nenhum adaptador real foi implementado. Por isso, mesmo com conexão validada, os dados continuam vindo do adaptador simulado, e a interface diz isso.
 - Arquivo: `src/platform/integrations.ts` (`integrationStatus`, `validateIntegration`).
+
+### Consultas reais dos módulos
+
+As entradas do menu levam a `/inventario/consulta`, `/viagens/consulta` e `/reverso/consulta`. As rotas legadas continuam sendo demonstrações marcadas e usam apenas o estado local. As consultas reais usam um cliente Supabase por domínio, chave publishable pública e o JWT do núcleo via `window.horizonAuth.getAccessToken()`. O The One System mantém esse identificador de sessão por compatibilidade com as integrações existentes. Sem JWT, a aplicação não envia consultas anônimas. O acesso ao menu e à rota direta exige a mesma ação `ver`; as políticas RLS da origem limitam conta e registro.
+
+Cada projeto deve expor uma view de leitura com o nome configurado no `.env.example` e as colunas canônicas documentadas abaixo. O filtro `company_id` recebe o identificador do ambiente ativo (`azime`, `alinare` ou `novitah`). Os nomes das views e as conversões precisam ser conferidos com o código dos sistemas quando os repositórios forem anexados.
+
+- Inventário: `id, company_id, patrimonio, descricao, tipo, modelo, serie, situacao, responsavel_nome, responsavel_email, localizacao, aquisicao, ultima_movimentacao, movimentacoes, documentos, updated_at`.
+- Viagens: `id, company_id, codigo, situacao, viajante_nome, viajante_email, destino, motivo, inicio, fim, trechos, documentos, updated_at`.
+- Reverso: `id, company_id, numero, situacao, solicitante_nome, solicitante_email, cliente_codigo, cliente_nome, motivo, aberto_em, historico, rastreio, documentos, updated_at`.
+- `movimentacoes`, `trechos`, `historico` e `documentos` são JSON; documentos podem trazer uma URL HTTPS fornecida pela origem ou `bucket` + `path` protegidos por Storage/RLS. Nenhum endereço é montado a partir de um id fictício.
+- A lista busca por patrimônio, código da viagem ou número da solicitação; a ficha é lida por id e ambiente. As telas não oferecem operações de escrita.
+- Resultado 401/403/RLS: **Acesso negado**; falta de JWT: **Acesso não validado**; fonte/view/rede ausente: **Indisponível**. Nenhum erro troca para os dados demonstrativos.
+- Não use `service_role` no navegador. A conta e os ambientes reais de apresentação ainda estão **NÃO VALIDADOS**.
 
 ### Destinos (abrir registros e conversas)
 
@@ -31,6 +45,8 @@ Versão 0.4. **Todas as integrações externas usam adaptadores simulados** com 
 | `VITE_TEAMS_TENANT` | Tenant do Teams (“Abrir o Teams”); conversas usam o `webUrl` de cada uma |
 | `VITE_MAIL_SENDER` | Remetente do envio pelo backend (Graph `sendMail`) |
 | `VITE_INTEGRATION_API` | Backend que valida conexões e guarda credenciais |
+| `VITE_SUPABASE_<MÓDULO>_URL` e `_PUBLISHABLE_KEY` | Uma conexão pública por projeto de domínio; nunca usar chave service_role |
+| `VITE_<MÓDULO>_READ_VIEW` | View canônica somente leitura publicada pelo projeto do domínio |
 
 ## O que funciona localmente (no navegador, sem backend)
 
@@ -89,6 +105,12 @@ Adaptador em `src/modules/chamados/ops.ts`. Cada operação chama `api.call('cha
 - **Download**: revalida pessoa, ambiente, autorização (hash igual ao aprovado), acesso atual ao módulo, regra atual (campos, formato, cargo, histórico) e acesso a cada registro. O arquivo é montado só com os registros e campos autorizados e conferido pelo hash.
 - **Resultados distintos**: arquivo gerado, exportação simulada (XLSX/PDF), falha na geração (serviço de arquivos ou navegador; permite nova tentativa) e download bloqueado (com o motivo). Todos ficam na solicitação e na auditoria.
 - **Regra alterada**: cada alteração cria uma nova versão. Antes de salvar, a Gerência vê quais aprovações a mudança vai bloquear.
+
+## Instalação de extensões pelo Git
+
+O backend da plataforma acessa repositórios públicos ou privados, lê uma revisão exata e confere manifesto, compatibilidade, dependências e cada conexão declarada antes de registrar a instalação. A tentativa pendente mantém o mesmo SHA para nova validação. URLs privadas usam credenciais Git configuradas no servidor; não passe token pelo navegador.
+
+O instalador aceita o contrato declarativo `horizon-plugin.json` e não executa scripts do repositório. O template e as etapas operacionais estão em [PLUGINS-GIT.md](PLUGINS-GIT.md).
 
 ## Regras de acesso
 

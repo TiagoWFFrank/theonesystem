@@ -34,9 +34,10 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
     const active = !fav && inModule(m);
     const n = pendBy(m.id);
     const sub = m.menu.filter((x) => allowed(m.id, x));
+    const defaultPath = sub.some((item) => item.path === m.basePath) ? m.basePath : sub[0]?.path ?? m.basePath;
     return (
       <>
-        <NavLink to={m.basePath} onClick={onNavigate} className={() => `nav-item ${active ? 'active' : ''}`} title={m.name} aria-label={n ? `${m.name}, ${n} pendências` : m.name} aria-current={active ? 'page' : undefined} aria-expanded={!fav && sub.length > 1 ? active : undefined}>
+        <NavLink to={defaultPath} onClick={onNavigate} className={() => `nav-item ${active ? 'active' : ''}`} title={m.name} aria-label={n ? `${m.name}, ${n} pendências` : m.name} aria-current={active ? 'page' : undefined} aria-expanded={!fav && sub.length > 1 ? active : undefined}>
           <m.icon size={19} />
           <span className="nav-label">{m.name}</span>
           {m.maintenance ? <span className="nav-badge" title="Em manutenção"><Wrench size={12} /></span> : n > 0 && <span className="nav-badge">{n}</span>}
@@ -91,8 +92,9 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
 export function Sidebar() {
   const { company, session, setSession } = useDemo();
   return (
-    <aside className="sidebar desktop glass" aria-label="Plataforma">
+    <aside className="sidebar desktop glass" aria-label="The One System">
       <div className="sidebar-head">
+        <span className="product-name">The One System</span>
         <Logo brand={company} />
         <span className="env-tag">Ambiente {COMPANIES[company].name}</span>
       </div>

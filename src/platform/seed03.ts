@@ -61,5 +61,5 @@ export const seedTeams = (): TeamsMessage[] => [
 ];
 
 export const seedEmails = (): EmailMessage[] => [
-  { id: 'em1', ts: rel(-3, 11), toUserId: 'u1', to: 'ana.ribeiro@exemplo.com', subject: '[Viagens] Documentos disponíveis · VG-0412 Belo Horizonte/MG', body: 'Olá, Ana.\n\nOs bilhetes e o voucher da viagem VG-0412 estão disponíveis na Plataforma AZIME.\n\nAbrir: /viagens/v1', module: 'viagens', recordId: 'v1', link: '/viagens/v1', companyId: 'azime' },
+  { id: 'em1', ts: rel(-3, 11), toUserId: 'u1', to: 'ana.ribeiro@exemplo.com', subject: '[Viagens] Documentos disponíveis · VG-0412 Belo Horizonte/MG', body: 'Olá, Ana.\n\nOs bilhetes e o voucher da viagem VG-0412 estão disponíveis no The One System.\n\nAbrir: /viagens/v1', module: 'viagens', recordId: 'v1', link: '/viagens/v1', companyId: 'azime' },
 ];

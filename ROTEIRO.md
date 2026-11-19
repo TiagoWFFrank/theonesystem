@@ -1,4 +1,4 @@
-# Roteiro demonstrativo · versão 0.4
+# Roteiro demonstrativo · The One System 0.5.0
 
 Duração sugerida: 15 a 18 minutos. Todos os passos estão no **painel do apresentador** (selo *Demonstração* no cabeçalho; no celular, botão flutuante) com botões que já preparam perfil, ambiente e tela. Antes de começar: **Restaurar demonstração**.
 
@@ -28,6 +28,34 @@ Use também a seção **Eventos de outras pessoas** do painel do apresentador. E
 
 Ao final, abra **Integrações › E-mail › Caixa de saída** no painel do apresentador para mostrar os e-mails gerados pelos eventos (destinatário, assunto e registro relacionado).
 
+### Instalação e consulta do Plugin Demo pelo Git (0.5.0)
+
+| # | Cenário | Como fazer | O que conferir |
+|---|---|---|---|
+| 15 | Instalar uma cópia de plugin que a instância ainda não conhece | Elisa (TI) → Administração → Catálogo de plugins → Instalar pelo Git → repositório Demo → tag v1.1.0 → validar | **Conferido visualmente no repositório local:** SHA `c3d7a2439f8a3137db3051fbfdedd8d0e84be907`; acesso, revisão, compatibilidade e conexão aparecem em verificações separadas. Sem conexão, a tentativa fica pendente; depois de configurar a API, repetir com a mesma revisão. |
+| 16 | Habilitar por marca e pessoa | Detalhe do plugin → habilitar somente AZIME; conceder à Ana a ação **Consultar o Plugin Demo**; manter Carla sem grant | **Conferido visualmente:** só AZIME ficou habilitada; o menu apareceu para Ana e ficou oculto para Carla. A rota direta de Carla exibiu acesso negado sem dados. O grant **editar** e a tela de preferências pertencem ao roteiro completo, mas não foram exercitados neste aceite visual. |
+| 17 | Consultar lista e ficha no The One System | Ana → Plugin Demo → abrir `DEMO-1001` | **Conferido visualmente:** a API própria do plugin retornou `DEMO-1001` e `DEMO-1002`; Ana abriu a ficha `DEMO-1001`. Os dados são fictícios e identificados como demonstração. |
+| 18 | Atualizar o plugin | Depois de publicar uma nova revisão, instalar pelo mesmo catálogo | O SHA deve mudar; configurações, preferências individuais e dados do plugin devem ser preservados. A atualização visual ainda não foi repetida nesta revisão. |
+
+O aceite visual desta revisão usou Chromium (1440 × 1000), a tag local `v1.1.0` e a API de exemplo em loopback. Ana e Carla são personas locais simuladas, sem autenticação corporativa. O repositório do Demo não tem remoto Git configurado; a instalação publicada continua pendente.
+
+## Sequência para a diretoria
+
+1. Início demonstrativo atual, com Ana Ribeiro e AZIME. Chamados, Meu trabalho, notificações, Intranet, Feedback e Teams permanecem no cenário aprovado.
+2. Viagens pelo menu: abrir lista, escolher uma viagem real e conferir ficha, trechos, situação e documentos.
+3. Inventário pelo menu: buscar patrimônio real e conferir situação, responsável e movimentações.
+4. Reverso pelo menu: abrir solicitações reais e conferir situação, histórico e rastreio.
+5. Plugin Demo pelo catálogo Git e depois pelo menu: instalar a revisão, habilitar uma marca, comparar conta autorizada e conta sem permissão e consultar um registro fictício.
+
+## Status das fontes reais nesta máquina
+
+| Módulo | Conta/ambiente real | Percurso real | Estado |
+|---|---|---|---|
+| Viagens | Aguardando repositório, projeto Supabase e conta autorizada | Lista → ficha → trechos, situação e documentos | Não validado com dados reais |
+| Inventário | Aguardando repositório, projeto Supabase e conta autorizada | Busca de patrimônio → ficha → situação, responsável e movimentações | Não validado com dados reais |
+| Reverso | Aguardando repositório, projeto Supabase e conta autorizada | Lista → ficha → situação, histórico e rastreio | Não validado com dados reais |
+
+A prova automatizada do Plugin Demo usa perfis e dados fictícios em armazenamento temporário; ela não valida contas corporativas nem os três sistemas de origem. Se uma consulta real for negada ou a integração estiver indisponível, a tela deve exibir esse estado sem substituir a resposta por dados demonstrativos.
 ## Celular
 
 Abra em 390 px (ou 360 px). O Início empilha: prioridade → Meu trabalho → comunicados → mensagens → notificações → ações → atividades. O painel de trabalho ocupa a tela com ações e comentário acessíveis.

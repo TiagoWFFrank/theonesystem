@@ -1,6 +1,8 @@
-# Plataforma AZIME — protótipo de apresentação (0.4 · consistência dos fluxos)
+# The One System · versão 0.5 em preparação para a diretoria
 
-> **Novidades da 0.4** (o visual da 0.3 foi mantido):
+O nome de produto nas telas é **The One System**. Os identificadores técnicos legados dos plugins — incluindo `@azime/horizon-plugin-sdk`, `horizon-plugin.json`, `format: horizon-plugin`, `compatibility.horizon`, `window.horizonAuth`, `HORIZON_*` e `.horizon-data/` — permanecem aceitos nesta migração. Instalações, permissões, preferências e dados persistentes continuam disponíveis após a atualização.
+
+> **Base aprovada da 0.4** (o visual foi mantido):
 > - Operações revalidadas a cada tentativa, com o contexto do momento.
 > - Cancelamento seguro quando pessoa, ambiente ou registro mudam durante um envio, com rascunhos preservados.
 > - Avisos de disponibilidade fiéis ao comportamento, com tentativa automática agendada, pausa e retorno visual.
@@ -8,15 +10,22 @@
 > - Contrato de plugin completo; Chamados é o primeiro módulo sem dependências no núcleo.
 > - Exportações com conteúdo exato registrado, revalidação no download e resultado explícito: arquivo gerado, simulado, falha ou bloqueado.
 >
+> **Evolução local da 0.5**:
+> - Início e rotas demonstrativas permanecem com dados fictícios identificados; o menu de Viagens, Inventário e Reverso abre rotas de consulta real somente leitura.
+> - As consultas usam três conexões Supabase separadas e não recorrem a seeds quando a origem está ausente.
+> - Repositórios, schemas, conta autorizada e sessão real ainda não estão disponíveis nesta máquina; percursos com dados reais estão **NÃO VALIDADOS**.
+> - A instalação por ZIP continua demonstrativa; o aceite de pacote externo permanece pendente.
+>
 > Documentos:
 > - Correções e verificações: **[CORRECOES-0.4.md](CORRECOES-0.4.md)**
 > - Roteiro: **[ROTEIRO.md](ROTEIRO.md)** (14 cenários, também no painel do apresentador)
 > - Integrações: **[INTEGRACOES.md](INTEGRACOES.md)**
+> - Roteiro da diretoria: **[APRESENTACAO-DIRETORIA-0.5.md](APRESENTACAO-DIRETORIA-0.5.md)**
 
 ---
 
 
-Protótipo navegável em **React + TypeScript (Vite)**. Dados fictícios; login Microsoft, instalação de plugin, notificações, leitura de bilhete e exportações XLSX/PDF são **simulados** e persistidos no navegador (`localStorage`).
+Aplicação em **React + TypeScript (Vite)**. O Início e as rotas demonstrativas seguem com dados fictícios; as rotas reais dos três módulos consultam apenas fontes Supabase configuradas e identificadas. Login Microsoft, notificações e instalação por pacote ainda são simulados. Sem fonte ou sessão autorizada, a consulta exibe indisponibilidade/acesso não validado e não usa dados demonstrativos.
 
 ```bash
 npm install
@@ -75,6 +84,12 @@ Lista (patrimônio com ícone de tipo, responsável + local, situação, ação 
 | Gerência | Fábio Lima | Regras e decisões de exportação |
 
 O **painel do apresentador** (selo *Demonstração* no cabeçalho) troca perfil, ambiente, aparência, estados (carregando/erro/vazio/manutenção), transparência e movimento, e traz o roteiro com “Preparar e abrir”.
+
+## Instalação de plugins pelo Git (0.5.0)
+
+O catálogo administrativo oferece **Instalar pelo Git**. O backend fixa a tag/SHA escolhida, valida manifesto, compatibilidade, dependências e conexões e registra o commit instalado. Pendências não ativam o plugin; a TI pode corrigir a configuração e repetir a mesma revisão.
+
+O servidor local usa `npm run dev` para iniciar API e Vite juntos. O estado persistente de plugins continua em `.horizon-data/` (ou no volume `HORIZON_DATA_DIR`) para preservar instalações existentes. Veja [PLUGINS-GIT.md](PLUGINS-GIT.md) para configuração Git privada, SDK, template Demo e aceite reproduzível.
 
 ## Estrutura
 

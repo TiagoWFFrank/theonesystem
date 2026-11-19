@@ -37,6 +37,9 @@ const ROBUST: typeof SCRIPT = [
   { n: 13, label: 'Permissão retirada antes do envio', msg: 'Com a TF-311 aberta, desmarque “Ana pode Atender” em Eventos de outras pessoas e clique em Enviar para revisão: a operação é recusada pelo acesso atual.', steps: [{ label: 'Abrir TF-311', user: 'u1', company: 'azime', to: '/inicio?painel=chamados:t1', outages: {} }] },
   { n: 14, label: 'Regra de exportação alterada após aprovação', msg: 'EXP-0006 foi aprovada com o campo Cliente. Retire o campo em Eventos de outras pessoas: o download de Diego é bloqueado e registrado. Devolva o campo: volta a baixar.', steps: [{ label: 'Diego · EXP-0006', user: 'u4', company: 'alinare', to: '/exportacoes/x1' }, { label: 'Fábio · regras', user: 'u6', company: 'alinare', to: '/admin/exportacoes' }] },
 ];
+const GIT_PLUGIN: typeof SCRIPT = [
+  { n: 15, label: 'Instalar o Plugin Demo por Git', msg: 'Na TI, informe a URL e a tag publicada; confira acesso, SHA, manifesto e dependência do SDK. Corrija a conexão ausente e repita a mesma revisão. Depois, habilite só uma marca e confira ver/editar com duas contas.', steps: [{ label: 'Elisa · Catálogo Git', user: 'u5', company: 'azime', to: '/admin/plugins' }] },
+];
 const OUTAGE_KEYS: HealthId[] = ['sharepoint', 'feedback', 'teams', 'chamados', 'email'];
 
 export function PresenterPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -109,6 +112,22 @@ export function PresenterPanel({ open, onClose }: { open: boolean; onClose: () =
           <div>
             <div className="label row" style={{ marginBottom: 4 }}><ShieldCheck size={15} />Robustez · 0.4</div>
             {ROBUST.map((s) => (
+              <div className="script-step" key={s.n} style={{ gridTemplateColumns: '28px 1fr' }}>
+                <span className="step-num">{s.n}</span>
+                <div>
+                  <div className="strong">{s.label}</div>
+                  <div className="xs muted">{s.msg}</div>
+                  <div className="row-wrap" style={{ gap: 4, marginTop: 6 }}>
+                    {s.steps.map((st) => <button key={st.label} className="btn btn-secondary btn-xs" onClick={() => go(st)}>{st.label}<ArrowRight size={12} /></button>)}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div>
+            <div className="label row" style={{ marginBottom: 4 }}><Plug size={15} />Instalação por Git · 0.5.0</div>
+            {GIT_PLUGIN.map((s) => (
               <div className="script-step" key={s.n} style={{ gridTemplateColumns: '28px 1fr' }}>
                 <span className="step-num">{s.n}</span>
                 <div>

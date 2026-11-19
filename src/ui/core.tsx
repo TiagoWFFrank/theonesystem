@@ -133,13 +133,20 @@ export function Drawer({ open, onClose, title, children, side, footer, wide, lab
 }
 
 export function Confirm({ open, title, desc, confirmLabel, danger, onConfirm, onClose, children }: {
-  open: boolean; title: string; desc?: ReactNode; confirmLabel: string; danger?: boolean; onConfirm: () => void; onClose: () => void; children?: ReactNode;
+  open: boolean; title: string; desc?: ReactNode; confirmLabel: string; danger?: boolean; onConfirm: () => void | Promise<void>; onClose: () => void; children?: ReactNode;
 }) {
+  const [busy, setBusy] = useState(false);
+  const confirm = async () => {
+    setBusy(true);
+    try { await onConfirm(); onClose(); }
+    catch { /* the caller reports the failure in its own context */ }
+    finally { setBusy(false); }
+  };
   return (
     <Dialog open={open} onClose={onClose} title={title} desc={desc}
       footer={<>
-        <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
-        <button className={`btn ${danger ? 'btn-danger' : 'btn-primary'}`} onClick={() => { onConfirm(); onClose(); }}>{confirmLabel}</button>
+        <button className="btn btn-secondary" onClick={onClose} disabled={busy}>Cancelar</button>
+        <button className={`btn ${danger ? 'btn btn-danger' : 'btn btn-primary'}`} onClick={() => void confirm()} disabled={busy}>{busy ? 'Aplicando…' : confirmLabel}</button>
       </>}>
       {children}
     </Dialog>
