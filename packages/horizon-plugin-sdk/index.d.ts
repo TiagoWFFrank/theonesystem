@@ -1,7 +1,7 @@
 export type PluginAction = { id: string; label: string };
 export type PluginOperationInput = {
   name: string;
-  location: 'path' | 'query';
+  location: 'path' | 'query' | 'body';
   type: 'string' | 'integer';
   required?: boolean;
   default?: string | number;
@@ -12,20 +12,28 @@ export type PluginOperationInput = {
 export type PluginOperation = {
   id: string;
   connection: string;
-  method: 'GET';
+  method: 'GET' | 'POST';
   path: string;
   requires: string;
   inputs: PluginOperationInput[];
   response: { kind: 'collection' | 'record'; path: string };
 };
 export type PluginPageField = { label: string; field: string };
+export type PluginRuntimeContext = {
+  brandId: string;
+  userId: string;
+  params: Readonly<Record<string, string | undefined>>;
+  navigate(path: string): void;
+  operation(id: string, inputs?: Record<string, string | number>): Promise<unknown>;
+};
 export type PluginPage = {
   path: string;
   title: string;
   description?: string;
   requires?: string | string[];
   mode?: 'demo' | 'real';
-  kind?: 'content' | 'list' | 'detail';
+  kind?: 'content' | 'list' | 'detail' | 'react';
+  component?: string;
   operationId?: string;
   columns?: PluginPageField[];
   search?: { input: string; placeholder?: string };

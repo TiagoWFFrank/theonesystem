@@ -1,8 +1,9 @@
+import * as React from 'react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Boxes, FileSearch, LoaderCircle, Package, Puzzle, RefreshCw, Search, type LucideIcon } from 'lucide-react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import type { ModuleManifest } from '@/platform/types';
-import { externalPackageById, pluginRequestHeaders, type ExternalPackagePage as PageDefinition, type ExternalPluginPackage } from '@/platform/externalPackages';
+import { externalPackageById, gitInstallById, pluginRequestHeaders, type ExternalPackagePage as PageDefinition, type ExternalPluginPackage } from '@/platform/externalPackages';
 import { Badge, EmptyState, KV, PageHeader } from '@/ui/core';
 import { useDemo } from '@/platform/store';
 
@@ -22,6 +23,7 @@ function ExternalPackagePage({ packageId, path }: { packageId: string; path: str
 
 function PackagePage({ plugin, page }: { plugin: ExternalPluginPackage; page: PageDefinition }) {
   const Icon = PACKAGE_ICONS[plugin.icon];
+  if (page.kind === 'react') return <PackageReactPage plugin={plugin} page={page} />;
   if (page.configuration) return <PackageConfiguration plugin={plugin} page={page} />;
   if (page.kind === 'list' || page.kind === 'detail') return <PackageDataPage plugin={plugin} page={page} />;
   return (
@@ -45,6 +47,70 @@ function PackagePage({ plugin, page }: { plugin: ExternalPluginPackage; page: Pa
       <p className="xs muted" style={{ marginTop: 14 }}>Esta prova carrega apenas manifesto JSON validado. O núcleo renderiza a página com os componentes e o contexto do The One System; nenhum JavaScript do ZIP é executado.</p>
     </>
   );
+}
+
+type ReactPluginProps = {
+  react: typeof React;
+  context: { brandId: string; userId: string; params: Readonly<Record<string, string | undefined>>; navigate: (path: string) => void; operation: (id: string, inputs?: Record<string, string | number>) => Promise<unknown> };
+};
+
+class PluginPageBoundary extends React.Component<{ children: React.ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() {
+    return this.state.failed ? <div className="banner banner-danger" role="alert">A página do plugin não pôde ser exibida.</div> : this.props.children;
+  }
+}
+
+function PackageReactPage({ plugin, page }: { plugin: ExternalPluginPackage; page: PageDefinition }) {
+  const { pluginAuthReady, pluginAuthIdentity, company, me } = useDemo();
+  const params = useParams();
+  const navigate = useNavigate();
+  const [component, setComponent] = useState<React.ComponentType<ReactPluginProps> | null>(null);
+  const [error, setError] = useState('');
+  const install = gitInstallById(plugin.id);
+  const commit = install?.commit;
+  const index = plugin.pages.findIndex((item) => item.path === page.path);
+  const waiting = import.meta.env.DEV && !!me && pluginAuthIdentity !== me.id + ':' + company;
+  useEffect(() => {
+    setComponent(null);
+    setError('');
+    if (!pluginAuthReady || waiting || !me) return;
+    if (!commit || index < 0) { setError('Componente disponível somente para plugins instalados pelo Git.'); return; }
+    let alive = true;
+    let objectUrl = '';
+    const load = async () => {
+      try {
+        const response = await fetch(`/api/plugins/${encodeURIComponent(plugin.id)}/components/${index}?commit=${encodeURIComponent(commit)}`, { headers: await pluginRequestHeaders(), cache: 'no-store' });
+        if (!response.ok) throw new Error('Não foi possível carregar a página autorizada do plugin.');
+        const script = await response.text();
+        if (!alive) return;
+        objectUrl = URL.createObjectURL(new Blob([script], { type: 'text/javascript' }));
+        const module = await import(/* @vite-ignore */ objectUrl) as { default?: React.ComponentType<ReactPluginProps> };
+        if (typeof module.default !== 'function') throw new Error('O componente do plugin é inválido.');
+        if (alive) setComponent(() => module.default!);
+      } catch (reason) { if (alive) setError(reason instanceof Error ? reason.message : 'Falha ao carregar o plugin.'); }
+    };
+    void load();
+    return () => { alive = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [plugin.id, index, commit, company, me?.id, pluginAuthReady, pluginAuthIdentity, waiting]);
+  if (error) return <div className="banner banner-danger" role="alert">{error}</div>;
+  if (!component || !me) return <div className="small muted">Carregando página do plugin…</div>;
+  const operation = async (id: string, inputs: Record<string, string | number> = {}) => {
+    const declared = plugin.operations.find((item) => item.id === id);
+    if (!declared) throw new Error('Operação não declarada.');
+    if (Object.keys(inputs).some((key) => !declared.inputs.some((input) => input.name === key))) throw new Error('Parâmetro não declarado.');
+    const query = new URLSearchParams();
+    const body: Record<string, string | number> = {};
+    for (const input of declared.inputs) if (inputs[input.name] != null) {
+      if (input.location === 'body') body[input.name] = inputs[input.name]; else query.set(input.name, String(inputs[input.name]));
+    }
+    const response = await fetch(`/api/plugins/${encodeURIComponent(plugin.id)}/operations/${encodeURIComponent(id)}?${query}`, { method: declared.method, headers: await pluginRequestHeaders(declared.method === 'POST' ? { 'content-type': 'application/json', 'x-horizon-plugin-commit': commit! } : {}), ...(declared.method === 'POST' ? { body: JSON.stringify(body) } : {}), cache: 'no-store' });
+    const result = await response.json() as { data?: unknown; error?: string };
+    if (!response.ok) throw new Error(result.error || 'Operação não autorizada ou indisponível.');
+    return result.data;
+  };
+  return <PluginPageBoundary key={commit + ':' + page.path}>{React.createElement(component, { react: React, context: { brandId: company, userId: me.id, params, navigate: (path) => { if (path === plugin.basePath || path.startsWith(plugin.basePath + '/')) navigate(path); }, operation } })}</PluginPageBoundary>;
 }
 
 type PluginRecord = Record<string, unknown>;

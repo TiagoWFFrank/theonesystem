@@ -5,6 +5,8 @@ import { promisify } from 'node:util';
 import { execFile as execFileCallback } from 'node:child_process';
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { promises as fs } from 'node:fs';
+import { openCatalogStore } from './catalog-store.mjs';
+import { requireTrustedRepository, requireTrustedRevision } from './git-policy.mjs';
 
 const execFile = promisify(execFileCallback);
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -32,6 +34,8 @@ await fs.mkdir(ATTEMPTS_DIR, { recursive: true });
 await fs.mkdir(SETTINGS_DIR, { recursive: true });
 await fs.mkdir(USER_SETTINGS_DIR, { recursive: true });
 
+const centralStore = await openCatalogStore(DATA_DIR);
+let centralStoreHealthy = true;
 const registry = await readJson(REGISTRY_FILE, { plugins: {} });
 const attempts = await readJson(ATTEMPTS_FILE, {});
 
@@ -41,12 +45,21 @@ function text(value, label, max = 500) {
   return value.trim();
 }
 function writeJsonAtomic(file, value) {
+  if (centralStore) return centralStore.write(file, value).catch((error) => { centralStoreHealthy = false; throw error; });
   return fs.mkdir(path.dirname(file), { recursive: true })
     .then(() => fs.writeFile(`${file}.${process.pid}.tmp`, JSON.stringify(value, null, 2), 'utf8'))
     .then(() => fs.rename(`${file}.${process.pid}.tmp`, file));
 }
 async function readJson(file, fallback) {
+  if (centralStore) return centralStore.read(file, fallback).catch((error) => { centralStoreHealthy = false; throw error; });
   try { return JSON.parse(await fs.readFile(file, 'utf8')); } catch { return fallback; }
+}
+async function appendAudit(event) {
+  if (centralStore) return centralStore.appendAudit(event);
+  return fs.appendFile(PLUGIN_AUDIT_FILE, JSON.stringify(event) + '\n', 'utf8');
+}
+async function auditAdministration(req, pluginId, operationId, extra = {}) {
+  await appendAudit({ id: randomUUID(), at: new Date().toISOString(), actorId: requestSession(req)?.sub || 'administrador-sem-identidade-individual', pluginId, operationId, status: 200, outcome: 'admin_changed', ...extra });
 }
 function status(status, detail, extra = {}) { return { status, detail, ...extra }; }
 function pluginAccess(entry) {
@@ -55,11 +68,11 @@ function pluginAccess(entry) {
   const grants = isObject(access.grants) ? access.grants : {};
   return { active: access.active !== false, enabledBrands, grants };
 }
-function pluginActionGranted(entry, session, action) {
+function pluginActionGranted(entry, session, action, requireExplicit = false) {
   if (!entry || !session) return false;
   const access = pluginAccess(entry);
   if (!access.active || !access.enabledBrands.includes(session.brandId) || !session.brands.includes(session.brandId)) return false;
-  if (entry.manifest.business === true && session.leader === true) return true;
+  if (!requireExplicit && entry.manifest.business === true && session.leader === true) return true;
   return access.grants[session.sub]?.[session.brandId]?.actions?.includes(action) === true;
 }
 async function readUserSettings(pluginId, userId) {
@@ -135,12 +148,14 @@ async function readLimitedJson(response) {
 function valueAtPath(value, route) {
   return route.split('.').reduce((current, key) => isObject(current) ? current[key] : undefined, value);
 }
-function validateOperationInputs(operation, url) {
+function validateOperationInputs(operation, url, body = {}) {
   const declared = new Map(operation.inputs.map((input) => [input.name, input]));
-  for (const key of url.searchParams.keys()) if (!declared.has(key)) throw Object.assign(new Error('Parâmetro não declarado: ' + key + '.'), { statusCode: 400 });
+  for (const key of url.searchParams.keys()) if (!declared.has(key) || declared.get(key).location === 'body') throw Object.assign(new Error('Parâmetro não declarado: ' + key + '.'), { statusCode: 400 });
+  if (!isObject(body)) throw Object.assign(new Error('Corpo inválido.'), { statusCode: 400 });
+  for (const key of Object.keys(body)) if (!declared.has(key) || declared.get(key).location !== 'body') throw Object.assign(new Error('Campo não declarado: ' + key + '.'), { statusCode: 400 });
   const values = {};
   for (const input of operation.inputs) {
-    const all = url.searchParams.getAll(input.name);
+    const all = input.location === 'body' ? (Object.hasOwn(body, input.name) ? [body[input.name]] : []) : url.searchParams.getAll(input.name);
     if (all.length > 1) throw Object.assign(new Error('Parâmetro repetido: ' + input.name + '.'), { statusCode: 400 });
     const raw = all[0] ?? input.default;
     if (raw == null || raw === '') {
@@ -152,7 +167,8 @@ function validateOperationInputs(operation, url) {
       if (!Number.isSafeInteger(value) || value < (input.minimum ?? 0) || value > (input.maximum ?? 1000)) throw Object.assign(new Error('Parâmetro inteiro inválido: ' + input.name + '.'), { statusCode: 400 });
       values[input.name] = value;
     } else {
-      const value = String(raw);
+      if (typeof raw !== 'string') throw Object.assign(new Error('Parâmetro de texto inválido: ' + input.name + '.'), { statusCode: 400 });
+      const value = raw;
       if (value.length > (input.maxLength ?? 80) || /[\u0000-\u001f\u007f]/.test(value)) throw Object.assign(new Error('Parâmetro de texto inválido: ' + input.name + '.'), { statusCode: 400 });
       values[input.name] = value;
     }
@@ -160,6 +176,8 @@ function validateOperationInputs(operation, url) {
   return values;
 }
 async function executePluginOperation(req, res, pluginId, operationId, url) {
+  const requestId = randomUUID();
+  let writeStarted = false;
   const auditedResponse = async (code, body, session) => {
     const event = {
       id: randomUUID(),
@@ -169,26 +187,33 @@ async function executePluginOperation(req, res, pluginId, operationId, url) {
       pluginId,
       operationId,
       status: code,
-      outcome: body.code || 'unknown',
+      outcome: body.code || (code >= 200 && code < 300 ? 'success' : 'unknown'),
+      requestId,
+      commit: registry.plugins[pluginId]?.install?.commit || null,
     };
-    try { await fs.appendFile(PLUGIN_AUDIT_FILE, JSON.stringify(event) + '\n', 'utf8'); }
-    catch { return respond(res, 503, { code: 'audit_unavailable', error: 'Auditoria indisponível; a consulta não foi executada.' }); }
+    try { await appendAudit(event); }
+    catch { return respond(res, 503, { code: 'audit_unavailable', error: writeStarted ? 'Auditoria indisponível após o envio; confirme o resultado na origem.' : 'Auditoria indisponível; a operação não foi executada.' }); }
     return respond(res, code, body);
   };
   const session = requestSession(req);
   if (!session) return auditedResponse(401, { code: 'no_session', error: 'Sessão do The One System inválida ou ausente.' }, null);
+  if (centralStore?.operational && !await centralStore.hasMembership(session.sub, session.brandId)) return auditedResponse(403, { code: 'membership_required', error: 'Pessoa sem vínculo ativo nesta marca.' }, session);
   const entry = registry.plugins[pluginId];
   if (!entry) return auditedResponse(404, { code: 'not_installed', error: 'Plugin não instalado.' }, session);
+  try { assertTrustedInstallation(entry); }
+  catch { return auditedResponse(403, { code: 'untrusted_revision', error: 'A revisão instalada não está aprovada pela TI.' }, session); }
   const manifest = entry.manifest;
   const operation = manifest.operations?.find((item) => item.id === operationId);
   if (!operation) return auditedResponse(404, { code: 'operation_not_found', error: 'Operação declarada não encontrada.' }, session);
+  if (req.method !== operation.method) return auditedResponse(405, { code: 'method_not_allowed', error: 'Método não declarado.' }, session);
   const access = pluginAccess(entry);
   if (!access.active || !access.enabledBrands.includes(session.brandId) || !session.brands.includes(session.brandId)) {
     return auditedResponse(403, { code: 'brand_disabled', error: 'Plugin desativado para o ambiente ativo.' }, session);
   }
   const individual = access.grants[session.sub]?.[session.brandId];
-  const leaderAllowed = manifest.business === true && session.leader === true;
+  const leaderAllowed = operation.method !== 'POST' && manifest.business === true && session.leader === true;
   if (!leaderAllowed && !individual?.actions?.includes(operation.requires)) return auditedResponse(403, { code: 'permission_denied', error: 'A conta não tem a permissão necessária para esta consulta.' }, session);
+  if (operation.method === 'POST' && req.headers['x-horizon-plugin-commit'] !== entry.install.commit) return auditedResponse(409, { code: 'revision_changed', error: 'A revisão ativa mudou. Recarregue a página.' }, session);
   const grantScope = leaderAllowed ? 'empresa' : individual.scope;
   const connection = manifest.connections.find((item) => item.id === operation.connection);
   const settings = await readSettings(pluginId);
@@ -197,19 +222,28 @@ async function executePluginOperation(req, res, pluginId, operationId, url) {
   const resolved = allowedConnectionBase(baseValue);
   if (resolved.error) return auditedResponse(resolved.error === 'missing_config' ? 424 : 403, { code: resolved.error, error: resolved.message }, session);
   let inputs;
-  try { inputs = validateOperationInputs(operation, url); } catch (error) { return auditedResponse(error.statusCode || 400, { code: 'invalid_input', error: error.message }, session); }
+  try { inputs = validateOperationInputs(operation, url, operation.method === 'POST' ? await parseBody(req) : {}); } catch (error) { return auditedResponse(error.statusCode || 400, { code: 'invalid_input', error: error.message }, session); }
   const pathPart = operation.path.replace(/:([A-Za-z][A-Za-z0-9_]*)/g, (_match, name) => encodeURIComponent(String(inputs[name])));
   const target = new URL(resolved.base.pathname.replace(/\/$/, '') + pathPart, resolved.base.origin);
   for (const input of operation.inputs) if (input.location === 'query' && inputs[input.name] != null) target.searchParams.set(input.name, String(inputs[input.name]));
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 8000);
   try {
+    if (operation.method === 'POST') {
+      try { await appendAudit({ id: randomUUID(), at: new Date().toISOString(), actorId: session.sub, brandId: session.brandId, pluginId, operationId, status: null, outcome: 'write_started', requestId }); }
+      catch { return respond(res, 503, { code: 'audit_unavailable', error: 'Auditoria indisponível; a operação não foi executada.' }); }
+      if (registry.plugins[pluginId] !== entry || !pluginActionGranted(entry, session, operation.requires, true)) return auditedResponse(409, { code: 'access_changed', error: 'A revisão ou o acesso mudou. Recarregue a página.' }, session);
+      writeStarted = true;
+    }
+    const body = Object.fromEntries(operation.inputs.filter((input) => input.location === 'body' && inputs[input.name] != null).map((input) => [input.name, inputs[input.name]]));
     const upstream = await fetch(target, {
-      method: 'GET',
+      method: operation.method,
+      ...(operation.method === 'POST' ? { body: JSON.stringify(body) } : {}),
       signal: controller.signal,
       redirect: 'error',
       headers: {
         accept: 'application/json',
+        ...(operation.method === 'POST' ? { 'content-type': 'application/json', 'x-horizon-request-id': requestId } : {}),
         authorization: 'Bearer ' + sessionTokenForRequest(req),
         'x-horizon-actor-id': session.sub,
         'x-horizon-brand-id': session.brandId,
@@ -221,16 +255,17 @@ async function executePluginOperation(req, res, pluginId, operationId, url) {
     });
     if (upstream.status === 401 || upstream.status === 403) return auditedResponse(403, { code: 'source_denied', error: 'A fonte negou acesso à conta ou ao ambiente ativo.' }, session);
     if (upstream.status === 404) return auditedResponse(404, { code: 'record_not_found', error: 'O registro não foi encontrado na fonte.' }, session);
-    if (!upstream.ok) return auditedResponse(503, { code: 'unavailable', error: 'A fonte respondeu HTTP ' + upstream.status + '.' }, session);
+    if ([400, 409, 422].includes(upstream.status)) return auditedResponse(upstream.status, { code: 'source_invalid', error: 'A fonte recusou os dados enviados.' }, session);
+    if (!upstream.ok) return auditedResponse(503, { code: writeStarted ? 'result_unknown' : 'unavailable', error: writeStarted ? 'A fonte não confirmou o resultado; consulte o registro antes de repetir.' : 'A fonte respondeu HTTP ' + upstream.status + '.' }, session);
     let payload;
-    try { payload = await readLimitedJson(upstream); } catch (error) { return auditedResponse(502, { code: 'invalid_response', error: error.message || 'Resposta JSON da fonte inválida.' }, session); }
+    try { payload = await readLimitedJson(upstream); } catch (error) { return auditedResponse(502, { code: writeStarted ? 'result_unknown' : 'invalid_response', error: writeStarted ? 'A fonte não confirmou o resultado; consulte o registro antes de repetir.' : error.message || 'Resposta JSON da fonte inválida.' }, session); }
     const data = valueAtPath(payload, operation.response.path);
     if (operation.response.kind === 'collection' ? !Array.isArray(data) || data.some((item) => !isObject(item)) : !isObject(data)) {
-      return auditedResponse(502, { code: 'invalid_response', error: 'A resposta da fonte não corresponde ao contrato do manifesto.' }, session);
+      return auditedResponse(502, { code: writeStarted ? 'result_unknown' : 'invalid_response', error: writeStarted ? 'A fonte não confirmou o resultado; consulte o registro antes de repetir.' : 'A resposta da fonte não corresponde ao contrato do manifesto.' }, session);
     }
     return auditedResponse(200, { data, kind: operation.response.kind, commit: entry.install.commit }, session);
   } catch {
-    return auditedResponse(503, { code: 'unavailable', error: 'A fonte não respondeu ou está indisponível.' }, session);
+    return auditedResponse(503, { code: writeStarted ? 'result_unknown' : 'unavailable', error: writeStarted ? 'Não foi possível confirmar o resultado; consulte a origem antes de repetir.' : 'A fonte não respondeu ou está indisponível.' }, session);
   } finally { clearTimeout(timer); }
 }
 function validRoute(value, basePath) {
@@ -247,18 +282,20 @@ function loopback(address = '') {
 }
 function adminAllowed(req) {
   const remote = req.socket.remoteAddress || '';
-  if (process.env.NODE_ENV !== 'production' && loopback(remote)) return true;
+  if (process.env.NODE_ENV !== 'production' && !centralStore?.operational && loopback(remote)) return true;
+  if (requestSession(req)?.admin === true) return true;
   const expected = process.env.HORIZON_ADMIN_TOKEN;
   if (!expected) return false;
   const supplied = req.headers['x-horizon-admin-token'] || String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
   const token = typeof supplied === 'string' ? Buffer.from(supplied) : Buffer.alloc(0);
   const expectedBytes = Buffer.from(expected);
   if (token.length === expectedBytes.length && timingSafeEqual(token, expectedBytes)) return true;
-  return requestSession(req)?.admin === true;
+  return false;
 }
 function validateRepositoryUrl(value) {
   const source = text(value, 'repositoryUrl', 2048);
   if (/\s/.test(source) || source.startsWith('-')) throw new Error('Informe uma URL Git válida.');
+  requireTrustedRepository(source);
   const localAllowed = process.env.HORIZON_ALLOW_LOCAL_GIT === '1' && process.env.NODE_ENV !== 'production';
   if (localAllowed && (path.isAbsolute(source) || /^[A-Za-z]:[\\/]/.test(source))) return source;
   if (source.startsWith('git@')) {
@@ -279,6 +316,12 @@ function verifyHost(host) {
   const allowed = (process.env.HORIZON_GIT_ALLOWED_HOSTS || '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
   if (process.env.NODE_ENV === 'production' && !allowed.length) throw new Error('Configure HORIZON_GIT_ALLOWED_HOSTS no servidor.');
   if (allowed.length && !allowed.includes(host.toLowerCase())) throw new Error('A hospedagem Git não está na lista permitida pelo servidor.');
+}
+function assertTrustedInstallation(entry) {
+  // Existing records remain intact, but configured trust restrictions also apply at runtime.
+  if (process.env.NODE_ENV !== 'production' && !process.env.HORIZON_GIT_ALLOWED_REPOSITORIES && !process.env.HORIZON_GIT_TRUSTED_REVISIONS && !process.env.HORIZON_GIT_ALLOWED_HOSTS) return;
+  validateRepositoryUrl(entry.install?.repository);
+  requireTrustedRevision(entry.install?.repository, entry.install?.commit);
 }
 function validateRevision(type, value) {
   const revision = text(value, 'revision', 160);
@@ -342,7 +385,10 @@ function parseManifest(value) {
     });
     if (!validRoute(pagePath, basePath)) throw new Error('Manifest page route is invalid.');
     const pageKind = entry.kind == null ? 'content' : entry.kind;
-    if (!['content', 'list', 'detail'].includes(pageKind)) throw new Error('Manifest page kind is invalid.');
+    if (!['content', 'list', 'detail', 'react'].includes(pageKind)) throw new Error('Manifest page kind is invalid.');
+    const component = entry.component == null ? undefined : text(entry.component, 'page.component', 120);
+    if (pageKind === 'react' && (!component || !/^ui\/[A-Za-z0-9_-]+\.mjs$/.test(component) || !entry.requires)) throw new Error('React pages require a permitted action and a ui/*.mjs component.');
+    if (pageKind !== 'react' && component) throw new Error('Only React pages can declare a component.');
     const pageFields = (raw, label, max) => {
       if (!Array.isArray(raw) || raw.length < 1 || raw.length > max) throw new Error(`Manifest ${label} is invalid.`);
       return raw.map((field) => {
@@ -366,6 +412,7 @@ function parseManifest(value) {
       requires: requirement(entry.requires),
       mode: entry.mode || 'demo',
       kind: pageKind,
+      component,
       operationId: entry.operationId == null ? undefined : text(entry.operationId, 'page.operationId', 48),
       columns: entry.columns == null ? undefined : pageFields(entry.columns, 'page.columns', 12),
       search,
@@ -421,7 +468,7 @@ function parseManifest(value) {
     if (!/^[a-z][a-z0-9-]*$/.test(operationId)) throw new Error('Manifest operation id is invalid.');
     const connection = text(entry.connection, 'operation.connection', 48);
     if (!connectionIds.has(connection)) throw new Error(`Operation ${operationId} refers to an undeclared connection.`);
-    if (entry.method !== 'GET') throw new Error('Only read-only GET operations are supported.');
+    if (!['GET', 'POST'].includes(entry.method)) throw new Error('Only declared GET and POST operations are supported.');
     const operationPath = text(entry.path, 'operation.path', 200);
     if (!operationPath.startsWith('/') || operationPath.startsWith('//') || operationPath.includes('..') || /[\\%?#]/.test(operationPath) || !/^\/[A-Za-z0-9/_:-]+$/.test(operationPath)) throw new Error('Manifest operation path is invalid.');
     const rawInputs = entry.inputs ?? [];
@@ -429,7 +476,7 @@ function parseManifest(value) {
     const inputs = rawInputs.map((input) => {
       if (!isObject(input)) throw new Error('Manifest operation input is invalid.');
       const name = text(input.name, 'operation.input.name', 48);
-      if (!/^[a-z][A-Za-z0-9_]*$/.test(name) || !['path', 'query'].includes(input.location) || !['string', 'integer'].includes(input.type)) throw new Error('Manifest operation input definition is invalid.');
+      if (!/^[a-z][A-Za-z0-9_]*$/.test(name) || !['path', 'query', 'body'].includes(input.location) || (input.location === 'body' && entry.method !== 'POST') || !['string', 'integer'].includes(input.type)) throw new Error('Manifest operation input definition is invalid.');
       const parsed = { name, location: input.location, type: input.type, required: input.required === true };
       if (input.type === 'string') {
         const maxLength = input.maxLength == null ? 80 : Number(input.maxLength);
@@ -462,18 +509,19 @@ function parseManifest(value) {
     if (!isObject(response) || !['collection', 'record'].includes(response.kind)) throw new Error('Manifest operation response is invalid.');
     const responsePath = text(response.path, 'operation.response.path', 100);
     if (!/^[A-Za-z][A-Za-z0-9_.-]*$/.test(responsePath)) throw new Error('Manifest operation response path is invalid.');
-    return { id: operationId, connection, method: 'GET', path: operationPath, requires: action, inputs, response: { kind: response.kind, path: responsePath } };
+    return { id: operationId, connection, method: entry.method, path: operationPath, requires: action, inputs, response: { kind: response.kind, path: responsePath } };
   });
   if (new Set(operations.map((operation) => operation.id)).size !== operations.length) throw new Error('Manifest operation id is duplicated.');
   const operationById = new Map(operations.map((operation) => [operation.id, operation]));
   const pageByPath = new Map(pages.map((page) => [page.path, page]));
   for (const page of pages) {
-    if (page.kind === 'content') {
+    if (page.kind === 'content' || page.kind === 'react') {
       if (page.operationId) throw new Error('Content pages cannot bind a data operation.');
       continue;
     }
     const operation = operationById.get(page.operationId);
     if (!operation || !([page.requires].flat().includes(operation.requires))) throw new Error(`Page ${page.path} must require its operation action.`);
+    if (operation.method !== 'GET') throw new Error('Declarative list and detail pages require GET operations.');
     if (page.kind === 'list') {
       if (operation.response.kind !== 'collection' || !page.columns?.length || !page.recordIdField) throw new Error('List pages need a collection operation, columns, and a record id field.');
       const detailPage = pageByPath.get(page.detailPath);
@@ -636,9 +684,14 @@ async function attemptValidation(body) {
 
   let manifest;
   try {
+    requireTrustedRevision(repositoryUrl, commit);
     const raw = await git(['show', `${commit}:horizon-plugin.json`], attempt.stagingDir);
     if (raw.length > 256_000) throw new Error('Manifesto excede 256 KB.');
     manifest = parseManifest(JSON.parse(raw));
+    for (const page of manifest.pages.filter((item) => item.kind === 'react')) {
+      const script = await git(['show', `${commit}:${page.component}`], attempt.stagingDir);
+      if (!script || Buffer.byteLength(script, 'utf8') > 1_000_000) throw new Error('React component is missing or exceeds 1 MB.');
+    }
   } catch (error) {
     return { attemptId, status: 'pending', checks: { repository: repository.check, revision: status('ok', 'Revisão resolvida para um commit exato.', { selected: revision, type: revisionType, commit }), compatibility: status('incompatible', error.message || 'Manifesto ausente ou inválido.'), dependencies: [], connections: [] } };
   }
@@ -737,10 +790,10 @@ async function saveUserSettings(pluginId, userId, manifest, body) {
   const next = { ...current, ...settings };
   const userKey = createHash('sha256').update(userId).digest('hex');
   await writeJsonAtomic(path.join(USER_SETTINGS_DIR, pluginId, userKey + '.json'), next);
-  await fs.appendFile(PLUGIN_AUDIT_FILE, JSON.stringify({
+  await appendAudit({
     id: randomUUID(), at: new Date().toISOString(), actorId: userId,
     brandId: null, pluginId, operationId: 'user-settings', status: 200, outcome: 'settings_updated',
-  }) + '\n', 'utf8');
+  });
   return { ok: true, settings: next };
 }
 async function readAttemptManifest(attempt) {
@@ -766,9 +819,10 @@ async function serveStatic(req, res, url) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || '/', `http://${req.headers.host || `${HOST}:${PORT}`}`);
   try {
+    if (!centralStoreHealthy && url.pathname.startsWith('/api/plugins')) return respond(res, 503, { error: 'Catálogo central indisponível. Reinicie o servidor após verificar o banco.' });
     if (req.method === 'GET' && url.pathname === '/api/health') return respond(res, 200, { ok: true, version: SERVER_VERSION });
     if (req.method === 'POST' && url.pathname === '/api/dev/session') {
-      if (process.env.NODE_ENV === 'production' || process.env.HORIZON_DEV_SESSIONS !== '1' || !loopback(req.socket.remoteAddress || '')) {
+      if (process.env.NODE_ENV === 'production' || centralStore?.operational || process.env.HORIZON_DEV_SESSIONS !== '1' || !loopback(req.socket.remoteAddress || '')) {
         return respond(res, 404, { code: 'not_found', error: 'Sessões de demonstração indisponíveis.' });
       }
       const body = await parseBody(req);
@@ -796,6 +850,25 @@ const server = http.createServer(async (req, res) => {
       });
       return respond(res, 200, { plugins });
     }
+    const componentMatch = url.pathname.match(/^\/api\/plugins\/([a-z][a-z0-9-]{2,47})\/components\/(\d+)$/);
+    if (req.method === 'GET' && componentMatch) {
+      const session = requestSession(req);
+      if (!session) return respond(res, 401, { error: 'Sessão inválida ou ausente.' });
+      if (centralStore?.operational && !await centralStore.hasMembership(session.sub, session.brandId)) return respond(res, 403, { error: 'Pessoa sem vínculo ativo nesta marca.' });
+      const entry = registry.plugins[componentMatch[1]];
+      const page = entry?.manifest?.pages?.[Number(componentMatch[2])];
+      if (!entry || !page || page.kind !== 'react' || url.searchParams.get('commit') !== entry.install.commit) return respond(res, 404, { error: 'Componente indisponível.' });
+      try { assertTrustedInstallation(entry); } catch { return respond(res, 403, { error: 'A revisão instalada não está aprovada pela TI.' }); }
+      if (![page.requires].flat().some((action) => pluginActionGranted(entry, session, action))) return respond(res, 403, { error: 'Acesso negado ao componente.' });
+      const checkout = path.resolve(DATA_DIR, entry.install.checkout);
+      if (!checkout.startsWith(PLUGINS_DIR + path.sep)) return respond(res, 404, { error: 'Checkout indisponível.' });
+      try {
+        const script = await git(['show', `${entry.install.commit}:${page.component}`], checkout);
+        if (!script || Buffer.byteLength(script, 'utf8') > 1_000_000) throw new Error('Invalid component');
+        res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
+        return res.end(script);
+      } catch { return respond(res, 404, { error: 'Componente indisponível.' }); }
+    }
     if (req.method === 'POST' && url.pathname === '/api/plugins/git/revisions') {
       if (!adminOnly(req, res)) return;
       const body = await parseBody(req);
@@ -808,6 +881,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && url.pathname === '/api/plugins/git/install/validate') {
       if (!adminOnly(req, res)) return;
       const result = await attemptValidation(await parseBody(req));
+      if (result.status === 'installed') await auditAdministration(req, result.manifest.id, 'install', { commit: result.install.commit });
       return respond(res, 200, result);
     }
     const configMatch = url.pathname.match(/^\/api\/plugins\/config\/([a-z][a-z0-9-]{2,47})$/);
@@ -827,6 +901,7 @@ const server = http.createServer(async (req, res) => {
       const entry = registry.plugins[pluginId];
       const session = requestSession(req);
       if (!session) return respond(res, 401, { code: 'no_session', error: 'Sessão do The One System inválida ou ausente.' });
+      if (centralStore?.operational && !await centralStore.hasMembership(session.sub, session.brandId)) return respond(res, 403, { code: 'membership_required', error: 'Pessoa sem vínculo ativo nesta marca.' });
       if (!entry) return respond(res, 404, { error: 'Plugin não instalado.' });
       if (!entry.manifest.userConfiguration) return respond(res, 404, { error: 'O plugin não declarou preferências pessoais.' });
       if (!pluginActionGranted(entry, session, 'editar')) return respond(res, 403, { code: 'permission_denied', error: 'A conta não tem permissão editar neste plugin e ambiente.' });
@@ -841,11 +916,13 @@ const server = http.createServer(async (req, res) => {
       if (!entry) return respond(res, 404, { error: 'Plugin não instalado.' });
       const body = await parseBody(req);
       if (!Array.isArray(body.enabledBrands) || body.enabledBrands.some((brand) => !BRAND_IDS.has(brand))) return respond(res, 400, { error: 'enabledBrands deve conter marcas válidas.' });
+      if (body.enabledBrands.length) { try { assertTrustedInstallation(entry); } catch { return respond(res, 403, { error: 'A revisão instalada não está aprovada pela TI.' }); } }
       const access = pluginAccess(entry);
       access.enabledBrands = [...new Set(body.enabledBrands)];
       entry.access = access;
       entry.install = { ...entry.install, enabledBrands: access.enabledBrands, active: access.active };
       await writeJsonAtomic(REGISTRY_FILE, registry);
+      await auditAdministration(req, accessMatch[1], 'brand-access', { enabledBrands: access.enabledBrands });
       return respond(res, 200, { ok: true, enabledBrands: access.enabledBrands });
     }
     const activationMatch = url.pathname.match(/^\/api\/plugins\/([a-z][a-z0-9-]{2,47})\/activation$/);
@@ -855,11 +932,13 @@ const server = http.createServer(async (req, res) => {
       if (!entry) return respond(res, 404, { error: 'Plugin não instalado.' });
       const body = await parseBody(req);
       if (typeof body.active !== 'boolean') return respond(res, 400, { error: 'active deve ser booleano.' });
+      if (body.active) { try { assertTrustedInstallation(entry); } catch { return respond(res, 403, { error: 'A revisão instalada não está aprovada pela TI.' }); } }
       const access = pluginAccess(entry);
       access.active = body.active;
       entry.access = access;
       entry.install = { ...entry.install, enabledBrands: access.enabledBrands, active: access.active };
       await writeJsonAtomic(REGISTRY_FILE, registry);
+      await auditAdministration(req, activationMatch[1], 'activation', { active: access.active });
       return respond(res, 200, { ok: true, active: access.active });
     }
     const grantsMatch = url.pathname.match(/^\/api\/plugins\/([a-z][a-z0-9-]{2,47})\/access\/grants$/);
@@ -879,19 +958,22 @@ const server = http.createServer(async (req, res) => {
           return respond(res, 400, { error: 'Concessão inválida para a marca ' + brand + '.' });
         }
         const actions = [...new Set(grant.actions)];
+        if (centralStore?.operational && actions.length && !await centralStore.hasMembership(userId, brand)) return respond(res, 403, { error: 'Pessoa sem vínculo ativo validado neste ambiente.' });
         if (actions.length) next[brand] = { actions, scope: grant.scope };
       }
       access.grants[userId] = next;
       entry.access = access;
       await writeJsonAtomic(REGISTRY_FILE, registry);
+      await auditAdministration(req, grantsMatch[1], 'grants', { subjectId: userId, brands: Object.keys(next) });
       return respond(res, 200, { ok: true });
     }
     const operationMatch = url.pathname.match(/^\/api\/plugins\/([a-z][a-z0-9-]{2,47})\/operations\/([a-z][a-z0-9-]*)$/);
-    if (operationMatch && req.method === 'GET') return executePluginOperation(req, res, operationMatch[1], operationMatch[2], url);
+    if (operationMatch && ['GET', 'POST'].includes(req.method)) return executePluginOperation(req, res, operationMatch[1], operationMatch[2], url);
     if (req.url?.startsWith('/api/')) return respond(res, 404, { error: 'Rota de API inexistente.' });
     if (process.env.NODE_ENV === 'production' || url.port === String(PORT)) return serveStatic(req, res, url);
     respond(res, 404, { error: 'Rota inexistente.' });
   } catch (error) {
+    if (!centralStoreHealthy) return respond(res, 503, { error: 'Catálogo central indisponível. Reinicie o servidor após verificar o banco.' });
     respond(res, Number(error.statusCode) || 400, { error: error.message || 'Falha no servidor.' });
   }
 });
@@ -899,4 +981,4 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, HOST, () => {
   if (process.env.NODE_ENV !== 'test') process.stdout.write(`API do The One System ouvindo em http://${HOST}:${PORT}\n`);
 });
-for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => server.close(() => process.exit(0)));
+for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => server.close(async () => { await centralStore?.close(); process.exit(0); }));

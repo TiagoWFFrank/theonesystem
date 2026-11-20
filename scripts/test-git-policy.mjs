@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict';
+import { requireTrustedRepository, requireTrustedRevision } from '../server/git-policy.mjs';
+import { openCatalogStore } from '../server/catalog-store.mjs';
+
+const repo = 'https://github.com/example/demo.git';
+const sha = 'a'.repeat(40);
+const policy = { NODE_ENV: 'production', HORIZON_GIT_ALLOWED_REPOSITORIES: repo, HORIZON_GIT_TRUSTED_REVISIONS: `${repo}#${sha}` };
+assert.doesNotThrow(() => requireTrustedRepository(repo, policy));
+assert.doesNotThrow(() => requireTrustedRevision(repo, sha, policy));
+assert.throws(() => requireTrustedRepository('https://github.com/example/other.git', policy));
+assert.throws(() => requireTrustedRevision(repo, 'b'.repeat(40), policy));
+assert.throws(() => requireTrustedRevision('https://github.com/example/other.git', sha, policy));
+assert.throws(() => requireTrustedRepository(repo, { NODE_ENV: 'production' }));
+assert.throws(() => requireTrustedRevision(repo, sha, { NODE_ENV: 'production' }));
+assert.doesNotThrow(() => requireTrustedRepository('C:/test/demo', { NODE_ENV: 'development' }));
+process.env.NODE_ENV = 'production';
+delete process.env.HORIZON_DATABASE_URL;
+delete process.env.HORIZON_PGLITE_DIR;
+await assert.rejects(openCatalogStore('.'), /HORIZON_DATABASE_URL.*obrigatória/);
+console.log('PASS: production requires exact approved repository and commit; absent or different entries are denied.');

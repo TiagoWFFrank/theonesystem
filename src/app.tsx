@@ -50,7 +50,7 @@ export function mountApp() {
     <StrictMode>
       <DemoProvider>
         <ToastProvider>
-          <RouterProvider router={router} future={{ v7_startTransition: true }} />
+          <RouterProvider router={router} />
         </ToastProvider>
       </DemoProvider>
     </StrictMode>,

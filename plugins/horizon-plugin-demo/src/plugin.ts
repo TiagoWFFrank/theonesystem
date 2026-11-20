@@ -6,7 +6,7 @@ export const plugin = definePlugin({
   id: 'horizon-plugin-demo',
   name: 'Plugin Demo',
   description: 'Exemplo oficial de extensão declarativa, permissões separadas e conexão própria.',
-  version: '1.1.0',
+  version: '1.4.0',
   basePath: '/ext/horizon-plugin-demo',
   icon: 'Puzzle',
   compatibility: { horizon: '>=0.5.0 <0.6.0', sdk: '^0.5.0' },
@@ -37,9 +37,22 @@ export const plugin = definePlugin({
       inputs: [{ name: 'id', location: 'path', type: 'string', required: true, maxLength: 80 }],
       response: { kind: 'record', path: 'record' },
     },
+    {
+      id: 'alterar-status',
+      connection: 'demo-api',
+      method: 'POST',
+      path: '/records/:id/status',
+      requires: 'editar',
+      inputs: [
+        { name: 'id', location: 'path', type: 'string', required: true, maxLength: 80 },
+        { name: 'status', location: 'body', type: 'string', required: true, maxLength: 40 },
+      ],
+      response: { kind: 'record', path: 'record' },
+    },
   ],
   menu: [
     { label: 'Registros de demonstração', path: '/ext/horizon-plugin-demo', requires: 'ver' },
+    { label: 'Página React do Demo', path: '/ext/horizon-plugin-demo/pagina-react', requires: 'ver' },
     { label: 'Configuração', path: '/ext/horizon-plugin-demo/configuracao', requires: 'editar' },
   ],
   requirements: [
@@ -64,6 +77,14 @@ export const plugin = definePlugin({
     { id: 'demo-api', label: 'API própria do Plugin Demo', settingKey: 'apiBaseUrl', healthPath: '/health' },
   ],
   pages: [
+    {
+      path: '/ext/horizon-plugin-demo/pagina-react',
+      title: 'Página React do Demo',
+      description: 'Página fornecida pela revisão Git do plugin.',
+      requires: 'ver',
+      kind: 'react',
+      component: 'ui/demo.mjs',
+    },
     {
       path: '/ext/horizon-plugin-demo',
       title: 'Registros do Plugin Demo',

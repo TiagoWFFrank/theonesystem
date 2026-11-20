@@ -2,11 +2,16 @@
   "name": "azime-plataforma-prototipo",
   "private": true,
   "version": "0.5.0",
+  "engines": {
+    "node": ">=20"
+  },
   "type": "module",
   "scripts": {
     "dev": "node server/dev.mjs",
     "start": "node server/index.mjs",
     "test:e2e:plugin-git": "node scripts/e2e-plugin-git.mjs",
+    "test:e2e:plugin-browser": "node scripts/e2e-plugin-browser.mjs",
+    "test:central-schema": "node scripts/test-central-schema.mjs",
     "build": "tsc -b && vite build",
     "build:preview": "tsc -b && vite build --mode singlefile",
     "typecheck": "tsc -b",
@@ -16,15 +21,18 @@
     "@supabase/supabase-js": "^2.119.1",
     "fflate": "^0.8.3",
     "lucide-react": "^1.74.0",
+    "pg": "^8.23.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.30.6"
+    "react-router-dom": "^7.18.6"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.17",
     "@types/node": "^26.6.6",
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "^4.7.0",
+    "playwright": "1.61.1",
     "typescript": "^5.9.3",
     "vite": "^6.4.6",
     "vite-plugin-singlefile": "^2.3.4"

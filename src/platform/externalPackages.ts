@@ -6,7 +6,8 @@ export interface ExternalPackagePage {
   description?: string;
   requires?: string | string[];
   mode?: 'demo' | 'real';
-  kind?: 'content' | 'list' | 'detail';
+  kind?: 'content' | 'list' | 'detail' | 'react';
+  component?: string;
   operationId?: string;
   columns?: { label: string; field: string }[];
   search?: { input: string; placeholder?: string };
@@ -20,7 +21,7 @@ export interface ExternalPackagePage {
 
 export interface ExternalPluginOperationInput {
   name: string;
-  location: 'path' | 'query';
+  location: 'path' | 'query' | 'body';
   type: 'string' | 'integer';
   required?: boolean;
   default?: string | number;
@@ -32,7 +33,7 @@ export interface ExternalPluginOperationInput {
 export interface ExternalPluginOperation {
   id: string;
   connection: string;
-  method: 'GET';
+  method: 'GET' | 'POST';
   path: string;
   requires: string;
   inputs: ExternalPluginOperationInput[];
@@ -178,7 +179,10 @@ export function parseExternalPackage(value: unknown): ExternalPluginPackage {
     if (page.mode != null && page.mode !== 'demo' && page.mode !== 'real') throw new Error('Manifesto inválido: page.mode.');
     if (page.sections != null && (!Array.isArray(page.sections) || page.sections.length > 12)) throw new Error('Manifesto inválido: page.sections.');
     const kind = page.kind == null ? 'content' : page.kind;
-    if (!['content', 'list', 'detail'].includes(String(kind))) throw new Error('Manifest page kind is invalid.');
+    if (!['content', 'list', 'detail', 'react'].includes(String(kind))) throw new Error('Manifest page kind is invalid.');
+    const component = page.component == null ? undefined : text(page.component, 'page.component', 120);
+    if (kind === 'react' && (!component || !/^ui\/[A-Za-z0-9_-]+\.mjs$/.test(component) || !page.requires)) throw new Error('React page component or permission is invalid.');
+    if (kind !== 'react' && component) throw new Error('Only React pages can declare a component.');
     const pageFields = (raw: unknown, label: string, max: number) => {
       if (!Array.isArray(raw) || raw.length < 1 || raw.length > max) throw new Error(`Manifest ${label} is invalid.`);
       return raw.map((item) => {
@@ -202,6 +206,7 @@ export function parseExternalPackage(value: unknown): ExternalPluginPackage {
       requires: requirement(page.requires, knownActions),
       mode: page.mode as 'demo' | 'real' | undefined,
       kind: kind as ExternalPackagePage['kind'],
+      component,
       operationId: page.operationId == null ? undefined : text(page.operationId, 'page.operationId', 48),
       columns: page.columns == null ? undefined : pageFields(page.columns, 'page.columns', 12),
       search,
@@ -263,7 +268,7 @@ export function parseExternalPackage(value: unknown): ExternalPluginPackage {
   const connectionIds = new Set(connections.map((connection) => connection.id));
   const operations: ExternalPluginOperation[] = operationRows.map((rawOperation) => {
     const operation = object(rawOperation);
-    if (!operation || operation.method !== 'GET') throw new Error('Only read-only GET operations are supported.');
+    if (!operation || !['GET', 'POST'].includes(String(operation.method))) throw new Error('Only declared GET and POST operations are supported.');
     const operationId = text(operation.id, 'operation.id', 48);
     if (!/^[a-z][a-z0-9-]*$/.test(operationId)) throw new Error('Manifest operation id is invalid.');
     const connection = text(operation.connection, 'operation.connection', 48);
@@ -276,8 +281,8 @@ export function parseExternalPackage(value: unknown): ExternalPluginPackage {
       const field = object(rawInput);
       if (!field) throw new Error('Manifest operation input is invalid.');
       const name = text(field.name, 'operation.input.name', 48);
-      if (!/^[a-z][A-Za-z0-9_]*$/.test(name) || !['path', 'query'].includes(String(field.location)) || !['string', 'integer'].includes(String(field.type))) throw new Error('Manifest operation input definition is invalid.');
-      const parsed: ExternalPluginOperationInput = { name, location: field.location as 'path' | 'query', type: field.type as 'string' | 'integer', required: field.required === true };
+      if (!/^[a-z][A-Za-z0-9_]*$/.test(name) || !['path', 'query', 'body'].includes(String(field.location)) || (field.location === 'body' && operation.method !== 'POST') || !['string', 'integer'].includes(String(field.type))) throw new Error('Manifest operation input definition is invalid.');
+      const parsed: ExternalPluginOperationInput = { name, location: field.location as 'path' | 'query' | 'body', type: field.type as 'string' | 'integer', required: field.required === true };
       if (parsed.type === 'string') {
         const maxLength = field.maxLength == null ? 80 : Number(field.maxLength);
         if (!Number.isInteger(maxLength) || maxLength < 1 || maxLength > 512 || parsed.location === 'path' && maxLength > 80) throw new Error('Manifest operation string limit is invalid.');
@@ -309,18 +314,19 @@ export function parseExternalPackage(value: unknown): ExternalPluginPackage {
     if (!response || !['collection', 'record'].includes(String(response.kind))) throw new Error('Manifest operation response is invalid.');
     const responsePath = text(response.path, 'operation.response.path', 100);
     if (!/^[A-Za-z][A-Za-z0-9_.-]*$/.test(responsePath)) throw new Error('Manifest operation response path is invalid.');
-    return { id: operationId, connection, method: 'GET', path: operationPath, requires, inputs, response: { kind: response.kind as 'collection' | 'record', path: responsePath } };
+    return { id: operationId, connection, method: operation.method as 'GET' | 'POST', path: operationPath, requires, inputs, response: { kind: response.kind as 'collection' | 'record', path: responsePath } };
   });
   if (new Set(operations.map((operation) => operation.id)).size !== operations.length) throw new Error('Manifest operation id is duplicated.');
   const operationById = new Map(operations.map((operation) => [operation.id, operation]));
   const pageByPath = new Map(pages.map((page) => [page.path, page]));
   for (const page of pages) {
-    if (page.kind === 'content') {
+    if (page.kind === 'content' || page.kind === 'react') {
       if (page.operationId) throw new Error('Content pages cannot bind a data operation.');
       continue;
     }
     const operation = operationById.get(page.operationId ?? '');
     if (!operation || ![page.requires].flat().includes(operation.requires)) throw new Error('Page operation must require its declared action.');
+    if (operation.method !== 'GET') throw new Error('Declarative list and detail pages require GET operations.');
     if (page.kind === 'list') {
       if (operation.response.kind !== 'collection' || !page.columns?.length || !page.recordIdField) throw new Error('List pages need a collection operation, columns, and a record id field.');
       const detailPage = pageByPath.get(page.detailPath ?? '');
